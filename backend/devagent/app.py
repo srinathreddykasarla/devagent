@@ -67,6 +67,15 @@ async def lifespan(app: FastAPI):
         [p["name"] for p in enabled],
     )
 
+    from devagent.pipelines.jira_to_pr import JiraToPRPipeline
+    from devagent.pipelines.registry import PipelineRegistry
+
+    pipeline_registry = PipelineRegistry()
+    # Only register Jira-to-PR if both jira and github plugins are available
+    if "jira" in registry._plugins and "github" in registry._plugins:
+        pipeline_registry.register(JiraToPRPipeline(registry))
+    app.state.pipelines = pipeline_registry
+
     yield
 
     registry.shutdown_all()
