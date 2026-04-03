@@ -76,6 +76,11 @@ async def lifespan(app: FastAPI):
         pipeline_registry.register(JiraToPRPipeline(registry))
     app.state.pipelines = pipeline_registry
 
+    from devagent.core.event_bus import EventBus
+
+    event_bus = EventBus()
+    app.state.event_bus = event_bus
+
     yield
 
     registry.shutdown_all()
