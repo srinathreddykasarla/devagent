@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +26,7 @@ async def run_pipeline(
         id=uuid4().hex,
         task_id=task_id or "manual",
         status=RunStatus.RUNNING,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         logs=[],
     )
     db.add(run)
@@ -35,7 +35,11 @@ async def run_pipeline(
     channel = f"run:{run.id}:logs"
 
     async def log(msg: str, level: str = "info") -> None:
-        entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "level": level, "message": msg}
+        entry = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": level,
+            "message": msg,
+        }
         run.logs.append(entry)
         if event_bus:
             await event_bus.publish(channel, entry)
@@ -48,13 +52,13 @@ async def run_pipeline(
 
         run.status = RunStatus.SUCCESS
         run.result = result
-        run.finished_at = datetime.now(timezone.utc)
+        run.finished_at = datetime.now(UTC)
         await log(f"Pipeline '{pipeline_name}' completed successfully")
 
     except Exception as e:
         run.status = RunStatus.FAILED
         run.error = str(e)
-        run.finished_at = datetime.now(timezone.utc)
+        run.finished_at = datetime.now(UTC)
         await log(f"Pipeline '{pipeline_name}' failed: {e}", level="error")
         logger.error("Pipeline '%s' failed: %s", pipeline_name, e)
 
