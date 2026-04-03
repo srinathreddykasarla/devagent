@@ -6,10 +6,48 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from devagent.config import get_settings
+from devagent.config import (
+    GitHubSettings,
+    JiraSettings,
+    OutlookSettings,
+    TeamsSettings,
+    get_settings,
+)
 from devagent.database import init_db
+from devagent.plugins.registry import PluginRegistry
 
 logger = logging.getLogger(__name__)
+
+
+async def _init_plugins() -> PluginRegistry:
+    """Auto-register all enabled plugins based on .env settings."""
+    registry = PluginRegistry()
+
+    jira_settings = JiraSettings()
+    if jira_settings.enabled:
+        from devagent.plugins.jira.plugin import JiraPlugin
+
+        await registry.register(JiraPlugin(jira_settings))
+
+    github_settings = GitHubSettings()
+    if github_settings.enabled:
+        from devagent.plugins.github.plugin import GitHubPlugin
+
+        await registry.register(GitHubPlugin(github_settings))
+
+    teams_settings = TeamsSettings()
+    if teams_settings.enabled:
+        from devagent.plugins.teams.plugin import TeamsPlugin
+
+        await registry.register(TeamsPlugin(teams_settings))
+
+    outlook_settings = OutlookSettings()
+    if outlook_settings.enabled:
+        from devagent.plugins.outlook.plugin import OutlookPlugin
+
+        await registry.register(OutlookPlugin(outlook_settings))
+
+    return registry
 
 
 @asynccontextmanager
@@ -20,8 +58,18 @@ async def lifespan(app: FastAPI):
     await init_db(settings.database_url)
     app.state.settings = settings
 
-    logger.info("DevAgent started | env=%s", settings.app_env)
+    registry = await _init_plugins()
+    app.state.plugins = registry
+    enabled = registry.list_enabled()
+    logger.info(
+        "DevAgent started | env=%s | plugins=%s",
+        settings.app_env,
+        [p["name"] for p in enabled],
+    )
+
     yield
+
+    registry.shutdown_all()
     logger.info("DevAgent shutting down")
 
 
