@@ -1,0 +1,80 @@
+from __future__ import annotations
+
+from pathlib import Path
+from uuid import uuid4
+
+from devagent.config import GitHubSettings, get_settings
+from devagent.plugins.base import BasePlugin, PluginCapability, PluginHealth
+from devagent.plugins.github.client import AsyncGitHubClient
+
+
+class GitHubPlugin(BasePlugin):
+    name = "github"
+    description = "GitHub — clone repos, create branches, push, open PRs"
+    capabilities = [
+        PluginCapability.CLONE_REPO,
+        PluginCapability.CREATE_BRANCH,
+        PluginCapability.CREATE_PR,
+    ]
+
+    def __init__(self, settings: GitHubSettings) -> None:
+        self.settings = settings
+        self._client: AsyncGitHubClient | None = None
+
+    async def initialize(self) -> None:
+        self._client = AsyncGitHubClient(token=self.settings.token)
+
+    async def health_check(self) -> PluginHealth:
+        try:
+            user = await self._client.get_authenticated_user()
+            return PluginHealth(healthy=True, message=f"Authenticated as {user['login']}")
+        except Exception as e:
+            return PluginHealth(healthy=False, message=str(e))
+
+    async def execute(self, action: str, params: dict) -> dict:
+        match action:
+            case "clone_repo":
+                return await self._clone_repo(params["url"], params.get("depth", 50))
+            case "create_branch":
+                await self._client.git_checkout_branch(Path(params["repo_path"]), params["branch"])
+                return {"branch": params["branch"]}
+            case "create_pr":
+                return await self._create_pr(params)
+            case _:
+                raise ValueError(f"Unknown action: {action}")
+
+    async def _clone_repo(self, url: str, depth: int) -> dict:
+        workspace = Path(get_settings().workspace_dir)
+        workspace.mkdir(parents=True, exist_ok=True)
+        repo_dir = workspace / f"repo-{uuid4().hex[:8]}"
+        await self._client.clone_repo(url, repo_dir, depth)
+        return {"repo_path": str(repo_dir)}
+
+    async def _create_pr(self, params: dict) -> dict:
+        repo_path = Path(params["repo_path"])
+        branch = params["branch"]
+
+        await self._client.git_add_commit_push(
+            repo_path, branch, params.get("title", "DevAgent: automated changes")
+        )
+
+        owner, repo = self._extract_owner_repo(params["url"])
+        pr = await self._client.create_pull_request(
+            owner=owner,
+            repo=repo,
+            title=params["title"],
+            body=params.get("body", ""),
+            head=branch,
+            base=params.get("base", self.settings.default_base_branch),
+        )
+        return {"pr_url": pr["html_url"], "pr_number": pr["number"]}
+
+    @staticmethod
+    def _extract_owner_repo(url: str) -> tuple[str, str]:
+        """Extract owner/repo from a GitHub URL like https://github.com/owner/repo.git"""
+        path = url.rstrip("/").removesuffix(".git")
+        parts = path.split("/")
+        return parts[-2], parts[-1]
+
+    def shutdown(self) -> None:
+        pass
