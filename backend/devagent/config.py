@@ -69,7 +69,13 @@ class AppSettings(BaseSettings):
     claude_code_max_turns: int = 30
     claude_code_timeout: int = 600
     claude_code_allowed_tools: list[str] = [
-        "Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep",
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "MultiEdit",
+        "Glob",
+        "Grep",
     ]
 
     # Anthropic API

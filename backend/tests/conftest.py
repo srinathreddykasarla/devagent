@@ -12,7 +12,5 @@ async def client():
     from devagent.app import create_app
 
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
