@@ -20,6 +20,7 @@ async def run_pipeline(
     pipelines: PipelineRegistry,
     db: AsyncSession,
     event_bus: EventBus | None = None,
+    max_retries: int = 0,
 ) -> TaskRun:
     """Execute a pipeline and record the run in the database."""
     run = TaskRun(
@@ -40,27 +41,38 @@ async def run_pipeline(
             "level": level,
             "message": msg,
         }
-        run.logs.append(entry)
+        run.logs = [*run.logs, entry]  # Create new list to trigger SQLAlchemy change detection
         if event_bus:
             await event_bus.publish(channel, entry)
 
-    try:
-        pipeline = pipelines.get(pipeline_name)
-        await log(f"Starting pipeline '{pipeline_name}'")
+    attempt = 0
+    while attempt <= max_retries:
+        try:
+            pipeline = pipelines.get(pipeline_name)
+            await log(f"Starting pipeline '{pipeline_name}' (attempt {attempt + 1})")
 
-        result = await pipeline.run(params)
+            result = await pipeline.run(params)
 
-        run.status = RunStatus.SUCCESS
-        run.result = result
-        run.finished_at = datetime.now(UTC)
-        await log(f"Pipeline '{pipeline_name}' completed successfully")
+            run.status = RunStatus.SUCCESS
+            run.result = result
+            run.finished_at = datetime.now(UTC)
+            await log(f"Pipeline '{pipeline_name}' completed successfully")
+            break
 
-    except Exception as e:
-        run.status = RunStatus.FAILED
-        run.error = str(e)
-        run.finished_at = datetime.now(UTC)
-        await log(f"Pipeline '{pipeline_name}' failed: {e}", level="error")
-        logger.error("Pipeline '%s' failed: %s", pipeline_name, e)
+        except Exception as e:
+            attempt += 1
+            run.retry_count = attempt
+            if attempt <= max_retries:
+                await log(f"Attempt {attempt} failed: {e}. Retrying...", level="warning")
+            else:
+                run.status = RunStatus.FAILED
+                run.error = str(e)
+                run.finished_at = datetime.now(UTC)
+                await log(
+                    f"Pipeline '{pipeline_name}' failed after {attempt} attempts: {e}",
+                    level="error",
+                )
+                logger.error("Pipeline '%s' failed: %s", pipeline_name, e)
 
     await db.commit()
     return run

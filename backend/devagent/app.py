@@ -99,6 +99,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    from devagent.api.errors import register_error_handlers
+
+    register_error_handlers(app)
+
     from devagent.api.routes import pipelines, plugins, runs, tasks, ws
 
     app.include_router(tasks.router, prefix="/api/tasks")
