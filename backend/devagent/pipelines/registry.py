@@ -17,7 +17,8 @@ class PipelineRegistry:
 
     def get(self, name: str) -> BasePipeline:
         if name not in self._pipelines:
-            raise KeyError(f"Pipeline '{name}' not found. Available: {list(self._pipelines.keys())}")
+            available = list(self._pipelines.keys())
+            raise KeyError(f"Pipeline '{name}' not found. Available: {available}")
         return self._pipelines[name]
 
     def list_all(self) -> list[dict]:

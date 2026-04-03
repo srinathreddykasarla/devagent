@@ -118,16 +118,14 @@ def render_coding_prompt(ticket_context: dict) -> str:
         f"**Priority:** {ticket_context.get('priority', 'Medium')}\n\n"
         f"### Description\n{ticket_context.get('description', 'No description provided')}\n\n"
         f"### Comments\n"
-        + "\n".join(
-            f"- **{c['author']}**: {c['body']}" for c in ticket_context.get("comments", [])
-        )
+        + "\n".join(f"- **{c['author']}**: {c['body']}" for c in ticket_context.get("comments", []))
         + "\n\n"
-        f"### Instructions\n"
-        f"1. Read the existing codebase to understand the structure\n"
-        f"2. Implement the changes described above\n"
-        f"3. Write or update tests for your changes\n"
-        f"4. Ensure all tests pass\n"
-        f"5. Follow existing code style and conventions\n"
+        "### Instructions\n"
+        "1. Read the existing codebase to understand the structure\n"
+        "2. Implement the changes described above\n"
+        "3. Write or update tests for your changes\n"
+        "4. Ensure all tests pass\n"
+        "5. Follow existing code style and conventions\n"
     )
 
 

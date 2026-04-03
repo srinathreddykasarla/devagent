@@ -36,7 +36,9 @@ async def execute_claude_code(
         prompt,
     ]
 
-    logger.info("Executing Claude Code in %s (max_turns=%d, timeout=%ds)", repo_path, max_turns, timeout)
+    logger.info(
+        "Executing Claude Code in %s (max_turns=%d, timeout=%ds)", repo_path, max_turns, timeout
+    )
 
     try:
         process = await asyncio.create_subprocess_exec(
@@ -66,7 +68,7 @@ async def execute_claude_code(
             "session_id": result.get("session_id"),
         }
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         process.kill()
         logger.error("Claude Code timed out after %ds", timeout)
         return {"success": False, "error": f"Timed out after {timeout}s"}

@@ -1,7 +1,7 @@
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from devagent.agents.claude_code import execute_claude_code
 
