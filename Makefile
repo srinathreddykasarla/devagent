@@ -1,4 +1,11 @@
-.PHONY: dev dev-backend dev-frontend test lint migrate new-migration docker-up docker-down clean
+.PHONY: setup dev dev-backend dev-frontend test lint migrate new-migration docker-up docker-down clean
+
+# Setup
+setup:
+	./scripts/setup-dev-data.sh
+	cd backend && uv sync
+	cd frontend && npm install
+	@echo "Done. Copy .env.example to .env and configure, then run: make migrate && make dev"
 
 # Development
 dev:
@@ -38,4 +45,10 @@ docker-down:
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
-	rm -f backend/devagent.db backend/test.db
+	rm -f dev_data/db/devagent.db dev_data/db/devagent.db-journal
+	rm -f backend/test.db
+
+# Reset all dev data (destructive)
+clean-data:
+	rm -rf dev_data/repos/* dev_data/db/* dev_data/redis/* dev_data/logs/* dev_data/attachments/*
+	@echo "Dev data cleared. Run 'make setup' to re-create directories."

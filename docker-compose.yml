@@ -4,10 +4,17 @@ services:
       context: .
       dockerfile: Dockerfile.api
     env_file: .env
+    environment:
+      # Override paths for container (host dirs mounted at /data/*)
+      WORKSPACE_DIR: /data/repos
+      LOG_DIR: /data/logs
+      ATTACHMENTS_DIR: /data/attachments
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:
-      - ${WORKSPACE_DIR:-./repos}:/data/repos
+      - ./dev_data/repos:/data/repos
+      - ./dev_data/logs:/data/logs
+      - ./dev_data/attachments:/data/attachments
     depends_on:
       - redis
       - db
@@ -18,8 +25,14 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     env_file: .env
+    environment:
+      WORKSPACE_DIR: /data/repos
+      LOG_DIR: /data/logs
+      ATTACHMENTS_DIR: /data/attachments
     volumes:
-      - ${WORKSPACE_DIR:-./repos}:/data/repos
+      - ./dev_data/repos:/data/repos
+      - ./dev_data/logs:/data/logs
+      - ./dev_data/attachments:/data/attachments
     depends_on:
       - redis
       - db
@@ -47,7 +60,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
+      - ./dev_data/redis:/data
 
   db:
     image: postgres:16-alpine
@@ -58,8 +71,4 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-
-volumes:
-  redis-data:
-  pgdata:
+      - ./dev_data/db/postgres:/var/lib/postgresql/data

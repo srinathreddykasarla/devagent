@@ -55,7 +55,7 @@ class AppSettings(BaseSettings):
     app_cors_origins: list[str] = ["http://localhost:3000"]
 
     # Database
-    database_url: str = "sqlite+aiosqlite:///./devagent.db"
+    database_url: str = "sqlite+aiosqlite:///./dev_data/db/devagent.db"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -83,8 +83,14 @@ class AppSettings(BaseSettings):
     anthropic_model: str = "claude-sonnet-4-20250514"
 
     # Workspace
-    workspace_dir: str = "/data/repos"
+    workspace_dir: str = "./dev_data/repos"
     workspace_max_disk_gb: int = 20
+
+    # Logs
+    log_dir: str = "./dev_data/logs"
+
+    # Attachments
+    attachments_dir: str = "./dev_data/attachments"
 
     # Observability
     otel_enabled: bool = False
