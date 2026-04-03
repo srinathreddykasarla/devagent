@@ -38,8 +38,11 @@ export const api = {
   },
   pipelines: {
     list: () => fetchApi<Pipeline[]>("/pipelines"),
-    run: (id: string) =>
-      fetchApi<Run>(`/pipelines/${id}/run`, { method: "POST" }),
+    run: (id: string, params?: Record<string, unknown>) =>
+      fetchApi<Run>(`/pipelines/${id}/run`, {
+        method: "POST",
+        body: JSON.stringify({ params: params ?? {} }),
+      }),
   },
   health: () => fetchApi<{ status: string }>("/health"),
 };

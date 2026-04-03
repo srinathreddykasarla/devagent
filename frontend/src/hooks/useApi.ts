@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Task, Run, Plugin, Pipeline } from "@/lib/types";
 
@@ -37,5 +37,65 @@ export function usePipelines() {
   return useQuery<Pipeline[]>({
     queryKey: ["pipelines"],
     queryFn: api.pipelines.list,
+  });
+}
+
+export function useHealth() {
+  return useQuery<{ status: string }>({
+    queryKey: ["health"],
+    queryFn: api.health,
+    refetchInterval: 30000,
+  });
+}
+
+export function useCreateTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) => api.tasks.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+export function useUpdateTask(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) => api.tasks.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks", id] });
+    },
+  });
+}
+
+export function useDeleteTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.tasks.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+export function useTriggerTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.tasks.trigger(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+    },
+  });
+}
+
+export function useRunPipeline() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, params }: { id: string; params: Record<string, unknown> }) =>
+      api.pipelines.run(id, params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+    },
   });
 }
