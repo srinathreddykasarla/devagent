@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 
 class AsyncGitHubClient:
     def __init__(self, token: str) -> None:
+        logger.debug("[GitHubClient] Creating client with token_len=%d", len(token) if token else 0)
         self._token = token
         self._client = httpx.AsyncClient(
             base_url="https://api.github.com",
@@ -20,7 +24,9 @@ class AsyncGitHubClient:
         )
 
     async def get_authenticated_user(self) -> dict:
+        logger.debug("[GitHubClient] GET /user")
         r = await self._client.get("/user")
+        logger.debug("[GitHubClient] /user response: status=%d", r.status_code)
         r.raise_for_status()
         return r.json()
 

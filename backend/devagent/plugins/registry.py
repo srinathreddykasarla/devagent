@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import traceback
 
 from devagent.plugins.base import BasePlugin, PluginNotFoundError
 
@@ -13,13 +14,35 @@ class PluginRegistry:
 
     async def register(self, plugin: BasePlugin) -> None:
         """Initialize a plugin and add it to the registry. Logs and skips on failure."""
+        logger.debug("[PluginRegistry] Attempting to register plugin '%s'", plugin.name)
         try:
+            logger.debug("[PluginRegistry] Calling initialize() for '%s'", plugin.name)
             await plugin.initialize()
+            logger.debug("[PluginRegistry] initialize() succeeded for '%s'", plugin.name)
+
+            logger.debug("[PluginRegistry] Calling health_check() for '%s'", plugin.name)
             health = await plugin.health_check()
+            logger.debug(
+                "[PluginRegistry] health_check() result for '%s': healthy=%s, message=%s",
+                plugin.name,
+                health.healthy,
+                health.message,
+            )
+
             self._plugins[plugin.name] = plugin
-            logger.info("Plugin '%s' loaded: %s", plugin.name, health.message)
+            if health.healthy:
+                logger.info("Plugin '%s' loaded successfully: %s", plugin.name, health.message)
+            else:
+                logger.warning(
+                    "Plugin '%s' registered but unhealthy: %s", plugin.name, health.message
+                )
         except Exception as e:
-            logger.warning("Plugin '%s' failed to initialize: %s", plugin.name, e)
+            logger.error(
+                "Plugin '%s' failed to load: %s\n%s",
+                plugin.name,
+                e,
+                traceback.format_exc(),
+            )
 
     def get(self, name: str) -> BasePlugin:
         if name not in self._plugins:

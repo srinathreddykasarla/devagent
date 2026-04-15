@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic_settings.sources.base import PydanticBaseSettingsSource
+from pydantic_settings.sources.providers.dotenv import DotEnvSettingsSource
 from pydantic_settings.sources.providers.env import EnvSettingsSource
 
+# Resolve .env from project root (parent of backend/) regardless of CWD
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = _PROJECT_ROOT / ".env"
 
-class _LenientEnvSettingsSource(EnvSettingsSource):
-    """EnvSettingsSource that falls back to returning the raw string when JSON
-    decoding fails for complex fields.  This lets ``field_validator`` callables
-    handle non-JSON formats such as comma-separated lists."""
+
+class _LenientDecodeMixin:
+    """Mixin that falls back to returning the raw string when JSON decoding fails
+    for complex fields. This lets ``field_validator`` callables handle non-JSON
+    formats such as comma-separated lists."""
 
     def decode_complex_value(self, field_name: str, field: FieldInfo, value: Any) -> Any:
         try:
@@ -22,9 +28,17 @@ class _LenientEnvSettingsSource(EnvSettingsSource):
             return value
 
 
+class _LenientEnvSettingsSource(_LenientDecodeMixin, EnvSettingsSource):
+    pass
+
+
+class _LenientDotEnvSettingsSource(_LenientDecodeMixin, DotEnvSettingsSource):
+    pass
+
+
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -42,7 +56,7 @@ class AppSettings(BaseSettings):
         return (
             init_settings,
             _LenientEnvSettingsSource(settings_cls),
-            dotenv_settings,
+            _LenientDotEnvSettingsSource(settings_cls),
             file_secret_settings,
         )
 
@@ -111,13 +125,24 @@ class AppSettings(BaseSettings):
             return [t.strip() for t in v.split(",")]
         return v
 
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def resolve_sqlite_path(cls, v: str) -> str:
+        """Resolve relative SQLite paths against project root, not CWD."""
+        if v.startswith("sqlite") and ":///" in v:
+            prefix, path = v.split(":///", 1)
+            if path.startswith("./") or path.startswith("../"):
+                resolved = str((_PROJECT_ROOT / path).resolve())
+                return f"{prefix}:///{resolved}"
+        return v
+
     @property
     def is_dev(self) -> bool:
         return self.app_env == "development"
 
 
 class JiraSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="JIRA_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_prefix="JIRA_", extra="ignore")
     enabled: bool = False
     base_url: str = ""
     email: str = ""
@@ -126,7 +151,7 @@ class JiraSettings(BaseSettings):
 
 
 class GitHubSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="GITHUB_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_prefix="GITHUB_", extra="ignore")
     enabled: bool = False
     token: str = ""
     default_org: str = ""
@@ -134,14 +159,14 @@ class GitHubSettings(BaseSettings):
 
 
 class GitLabSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="GITLAB_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_prefix="GITLAB_", extra="ignore")
     enabled: bool = False
     url: str = "https://gitlab.com"
     token: str = ""
 
 
 class TeamsSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="TEAMS_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_prefix="TEAMS_", extra="ignore")
     enabled: bool = False
     tenant_id: str = ""
     client_id: str = ""
@@ -150,7 +175,7 @@ class TeamsSettings(BaseSettings):
 
 
 class OutlookSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="OUTLOOK_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_prefix="OUTLOOK_", extra="ignore")
     enabled: bool = False
     tenant_id: str = ""
     client_id: str = ""

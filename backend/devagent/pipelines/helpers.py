@@ -96,12 +96,16 @@ def _heuristic_missing(ticket_context: dict) -> str:
 def extract_repo_url(ticket_context: dict) -> str | None:
     """Extract a GitHub repo URL from ticket labels, components, or description."""
     desc = ticket_context.get("description") or ""
+    if not isinstance(desc, str):
+        desc = str(desc)
     urls = re.findall(r"https://github\.com/[\w\-]+/[\w\-]+", desc)
     if urls:
         return urls[0]
 
     for comment in ticket_context.get("comments", []):
         body = comment.get("body", "")
+        if not isinstance(body, str):
+            body = str(body)
         urls = re.findall(r"https://github\.com/[\w\-]+/[\w\-]+", body)
         if urls:
             return urls[0]

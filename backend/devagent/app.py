@@ -24,16 +24,32 @@ async def _init_plugins() -> PluginRegistry:
     registry = PluginRegistry()
 
     jira_settings = JiraSettings()
+    logger.debug(
+        "[Startup] Jira settings: enabled=%s, base_url=%s, email=%s",
+        jira_settings.enabled,
+        jira_settings.base_url,
+        jira_settings.email,
+    )
     if jira_settings.enabled:
         from devagent.plugins.jira.plugin import JiraPlugin
 
         await registry.register(JiraPlugin(jira_settings))
+    else:
+        logger.debug("[Startup] Jira plugin disabled, skipping")
 
     github_settings = GitHubSettings()
+    logger.debug(
+        "[Startup] GitHub settings: enabled=%s, org=%s, token_present=%s",
+        github_settings.enabled,
+        github_settings.default_org,
+        bool(github_settings.token),
+    )
     if github_settings.enabled:
         from devagent.plugins.github.plugin import GitHubPlugin
 
         await registry.register(GitHubPlugin(github_settings))
+    else:
+        logger.debug("[Startup] GitHub plugin disabled, skipping")
 
     teams_settings = TeamsSettings()
     if teams_settings.enabled:
@@ -47,6 +63,7 @@ async def _init_plugins() -> PluginRegistry:
 
         await registry.register(OutlookPlugin(outlook_settings))
 
+    logger.debug("[Startup] Plugin registration complete. Loaded: %s", list(registry._plugins.keys()))
     return registry
 
 
@@ -68,12 +85,16 @@ async def lifespan(app: FastAPI):
     )
 
     from devagent.pipelines.jira_to_pr import JiraToPRPipeline
+    from devagent.pipelines.jira_summary import JiraSummaryPipeline
     from devagent.pipelines.registry import PipelineRegistry
 
     pipeline_registry = PipelineRegistry()
     # Only register Jira-to-PR if both jira and github plugins are available
     if "jira" in registry._plugins and "github" in registry._plugins:
         pipeline_registry.register(JiraToPRPipeline(registry))
+    # Jira summary only needs the jira plugin
+    if "jira" in registry._plugins:
+        pipeline_registry.register(JiraSummaryPipeline(registry))
     app.state.pipelines = pipeline_registry
 
     from devagent.core.event_bus import EventBus

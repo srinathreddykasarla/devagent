@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from uuid import uuid4
 
 from devagent.config import GitHubSettings, get_settings
 from devagent.plugins.base import BasePlugin, PluginCapability, PluginHealth
 from devagent.plugins.github.client import AsyncGitHubClient
+
+logger = logging.getLogger(__name__)
 
 
 class GitHubPlugin(BasePlugin):
@@ -22,13 +25,27 @@ class GitHubPlugin(BasePlugin):
         self._client: AsyncGitHubClient | None = None
 
     async def initialize(self) -> None:
+        logger.debug(
+            "[GitHubPlugin] Initializing with org=%s, token_len=%d",
+            self.settings.default_org,
+            len(self.settings.token) if self.settings.token else 0,
+        )
+        if not self.settings.token:
+            raise ValueError("GITHUB_TOKEN is not set")
+
         self._client = AsyncGitHubClient(token=self.settings.token)
+        logger.debug("[GitHubPlugin] AsyncGitHubClient created successfully")
 
     async def health_check(self) -> PluginHealth:
         try:
+            if self._client is None:
+                return PluginHealth(healthy=False, message="Client not initialized")
+            logger.debug("[GitHubPlugin] Running health check — calling /user")
             user = await self._client.get_authenticated_user()
+            logger.debug("[GitHubPlugin] Health check passed: %s", user.get("login"))
             return PluginHealth(healthy=True, message=f"Authenticated as {user['login']}")
         except Exception as e:
+            logger.debug("[GitHubPlugin] Health check failed: %s", e)
             return PluginHealth(healthy=False, message=str(e))
 
     async def execute(self, action: str, params: dict) -> dict:

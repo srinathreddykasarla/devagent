@@ -49,7 +49,8 @@ def build_jira_to_pr_graph(plugins: PluginRegistry) -> StateGraph:
         sufficient = await assess_context_sufficiency(
             context, settings.anthropic_api_key, settings.anthropic_model
         )
-        repo_url = extract_repo_url(context)
+        # Use repo_url from params if provided, otherwise try to extract from ticket
+        repo_url = state.get("repo_url") or extract_repo_url(context)
 
         return {
             "ticket_context": context,
@@ -126,14 +127,33 @@ def build_jira_to_pr_graph(plugins: PluginRegistry) -> StateGraph:
         )
         return {"pr_url": pr_result["pr_url"]}
 
+    async def no_repo_url(state: JiraToPRState) -> dict:
+        ticket_id = state["ticket_id"]
+        logger.warning("No repo URL found for %s", ticket_id)
+        await jira.execute(
+            "post_comment",
+            {
+                "ticket_id": ticket_id,
+                "body": (
+                    "DevAgent: Could not find a GitHub repository URL in this ticket. "
+                    "Please add the repo URL to the description or re-run with "
+                    '{"ticket_id": "' + ticket_id + '", "repo_url": "https://github.com/owner/repo"}.'
+                ),
+            },
+        )
+        return {"error": "no_repo_url"}
+
     def route_after_jira(state: JiraToPRState) -> str:
-        if state.get("has_sufficient_context"):
-            return "setup_repo"
-        return "request_context"
+        if not state.get("has_sufficient_context"):
+            return "request_context"
+        if not state.get("repo_url"):
+            return "no_repo_url"
+        return "setup_repo"
 
     graph = StateGraph(JiraToPRState)
     graph.add_node("read_jira", read_jira)
     graph.add_node("request_context", request_more_context)
+    graph.add_node("no_repo_url", no_repo_url)
     graph.add_node("setup_repo", setup_repo)
     graph.add_node("run_claude_code", run_claude_code)
     graph.add_node("create_pr", create_pr)
@@ -141,6 +161,7 @@ def build_jira_to_pr_graph(plugins: PluginRegistry) -> StateGraph:
     graph.set_entry_point("read_jira")
     graph.add_conditional_edges("read_jira", route_after_jira)
     graph.add_edge("request_context", END)
+    graph.add_edge("no_repo_url", END)
     graph.add_edge("setup_repo", "run_claude_code")
     graph.add_edge("run_claude_code", "create_pr")
     graph.add_edge("create_pr", END)
@@ -156,8 +177,13 @@ class JiraToPRPipeline(BasePipeline):
         self._plugins = plugins
 
     async def run(self, params: dict[str, Any]) -> dict[str, Any]:
+        if "ticket_id" not in params:
+            return {"error": "ticket_id is required"}
         graph = build_jira_to_pr_graph(self._plugins)
         compiled = graph.compile()
-        initial_state: JiraToPRState = {"ticket_id": params["ticket_id"]}
+        initial_state: JiraToPRState = {
+            "ticket_id": params["ticket_id"],
+            "repo_url": params.get("repo_url"),
+        }
         result = await compiled.ainvoke(initial_state)
         return dict(result)

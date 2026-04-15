@@ -1,0 +1,11 @@
+.git
+.github
+.claude
+dev_data
+**/__pycache__
+**/*.pyc
+**/.venv
+**/node_modules
+**/.env.local
+*.md
+!README.md

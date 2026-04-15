@@ -15,10 +15,10 @@ async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   tasks: {
-    list: () => fetchApi<Task[]>("/tasks"),
+    list: () => fetchApi<Task[]>("/tasks/"),
     get: (id: string) => fetchApi<Task>(`/tasks/${id}`),
     create: (data: Record<string, unknown>) =>
-      fetchApi<Task>("/tasks", { method: "POST", body: JSON.stringify(data) }),
+      fetchApi<Task>("/tasks/", { method: "POST", body: JSON.stringify(data) }),
     update: (id: string, data: Record<string, unknown>) =>
       fetchApi<Task>(`/tasks/${id}`, {
         method: "PUT",
@@ -30,14 +30,14 @@ export const api = {
       fetchApi<Run>(`/tasks/${id}/trigger`, { method: "POST" }),
   },
   runs: {
-    list: () => fetchApi<Run[]>("/runs"),
+    list: () => fetchApi<Run[]>("/runs/"),
     get: (id: string) => fetchApi<Run>(`/runs/${id}`),
   },
   plugins: {
-    list: () => fetchApi<Plugin[]>("/plugins"),
+    list: () => fetchApi<Plugin[]>("/plugins/"),
   },
   pipelines: {
-    list: () => fetchApi<Pipeline[]>("/pipelines"),
+    list: () => fetchApi<Pipeline[]>("/pipelines/"),
     run: (id: string, params?: Record<string, unknown>) =>
       fetchApi<Run>(`/pipelines/${id}/run`, {
         method: "POST",
