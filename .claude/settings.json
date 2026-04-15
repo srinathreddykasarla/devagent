@@ -1,0 +1,12 @@
+{
+  "model": "opus[1m]",
+  "experimental": {
+    "agentTeams": true
+  },
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
