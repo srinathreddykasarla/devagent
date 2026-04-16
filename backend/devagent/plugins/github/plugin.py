@@ -20,6 +20,84 @@ class GitHubPlugin(BasePlugin):
         PluginCapability.CREATE_PR,
     ]
 
+    TOOL_SCHEMAS = {
+        "clone_repo": {
+            "description": (
+                "Clone a GitHub repository to the workspace. Returns a repo_path "
+                "that must be used for subsequent branch and PR operations."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "GitHub repo URL, e.g. 'https://github.com/owner/repo'.",
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "description": "Git clone depth (default 50).",
+                        "default": 50,
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+        "create_branch": {
+            "description": "Create a new branch in a cloned repository.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo_path": {
+                        "type": "string",
+                        "description": "Local repo path returned by clone_repo.",
+                    },
+                    "branch": {
+                        "type": "string",
+                        "description": "Branch name, e.g. 'fix/scrum-1-add-auth'.",
+                    },
+                },
+                "required": ["repo_path", "branch"],
+            },
+        },
+        "create_pr": {
+            "description": (
+                "Commit all changes, push the branch, and open a pull request. "
+                "Returns {pr_url, pr_number}."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo_path": {
+                        "type": "string",
+                        "description": "Local repo path.",
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "GitHub repo URL (used to extract owner/repo).",
+                    },
+                    "branch": {
+                        "type": "string",
+                        "description": "Branch name to push and open PR from.",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Pull request title.",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Pull request description.",
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "Target base branch (default 'main').",
+                        "default": "main",
+                    },
+                },
+                "required": ["repo_path", "url", "branch", "title"],
+            },
+        },
+    }
+
     def __init__(self, settings: GitHubSettings) -> None:
         self.settings = settings
         self._client: AsyncGitHubClient | None = None

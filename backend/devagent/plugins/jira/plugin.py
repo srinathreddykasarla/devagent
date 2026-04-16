@@ -14,6 +14,67 @@ class JiraPlugin(BasePlugin):
     description = "Atlassian Jira — read tickets, comments, attachments, post comments"
     capabilities = [PluginCapability.READ_TICKETS, PluginCapability.POST_COMMENT]
 
+    TOOL_SCHEMAS = {
+        "read_ticket": {
+            "description": (
+                "Read a Jira ticket by ID. Returns summary, description, type, priority, "
+                "status, labels, components, comments, and attachment count."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticket_id": {
+                        "type": "string",
+                        "description": "Jira ticket key, e.g. 'SCRUM-1' or 'PROJ-123'.",
+                    },
+                },
+                "required": ["ticket_id"],
+            },
+        },
+        "search_tickets": {
+            "description": (
+                "Search Jira tickets using a project key and optional status filter. "
+                "Returns a list of tickets sorted by priority then created date."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Jira project key, e.g. 'SCRUM'.",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Optional status filter, e.g. 'To Do', 'In Progress', 'Done'.",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum tickets to return (default 50).",
+                        "default": 50,
+                    },
+                },
+                "required": ["project"],
+            },
+        },
+        "post_comment": {
+            "description": "Post a plain-text comment on a Jira ticket.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticket_id": {
+                        "type": "string",
+                        "description": "Jira ticket key to comment on.",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Comment text.",
+                    },
+                },
+                "required": ["ticket_id", "body"],
+            },
+        },
+    }
+
     def __init__(self, settings: JiraSettings) -> None:
         self.settings = settings
         self._client: AsyncJiraClient | None = None

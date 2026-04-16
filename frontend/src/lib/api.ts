@@ -1,4 +1,12 @@
-import type { Task, Run, Plugin, Pipeline } from "./types";
+import type {
+  Task,
+  Run,
+  Plugin,
+  Pipeline,
+  PipelineCreateInput,
+  PipelineUpdateInput,
+  Tool,
+} from "./types";
 
 const API_BASE = "/api";
 
@@ -38,11 +46,27 @@ export const api = {
   },
   pipelines: {
     list: () => fetchApi<Pipeline[]>("/pipelines/"),
+    get: (id: string) => fetchApi<Pipeline>(`/pipelines/${id}`),
+    create: (data: PipelineCreateInput) =>
+      fetchApi<Pipeline>("/pipelines/", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: PipelineUpdateInput) =>
+      fetchApi<Pipeline>(`/pipelines/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      fetchApi<{ deleted: string }>(`/pipelines/${id}`, { method: "DELETE" }),
     run: (id: string, params?: Record<string, unknown>) =>
       fetchApi<Run>(`/pipelines/${id}/run`, {
         method: "POST",
         body: JSON.stringify({ params: params ?? {} }),
       }),
+  },
+  tools: {
+    list: () => fetchApi<Tool[]>("/tools/"),
   },
   health: () => fetchApi<{ status: string }>("/health"),
 };

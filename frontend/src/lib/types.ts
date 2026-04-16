@@ -40,4 +40,30 @@ export interface Pipeline {
   id: string;
   name: string;
   description: string;
+  system_prompt: string;
+  default_params: Record<string, unknown>;
+  is_builtin: boolean;
+  source: "db" | "legacy";
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface PipelineCreateInput {
+  name: string;
+  description?: string;
+  system_prompt: string;
+  default_params?: Record<string, unknown>;
+}
+
+export interface PipelineUpdateInput {
+  name?: string;
+  description?: string;
+  system_prompt?: string;
+  default_params?: Record<string, unknown>;
+}
+
+export interface Tool {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
 }

@@ -31,6 +31,11 @@ class BasePlugin(ABC):
     description: str
     capabilities: list[PluginCapability]
 
+    # Optional: map action names to Anthropic-compatible tool schemas.
+    # Each entry: {"description": str, "parameters": JSON Schema dict}
+    # Used by the orchestrator's ToolRegistry to expose plugin actions as LLM tools.
+    TOOL_SCHEMAS: dict[str, dict] = {}
+
     @abstractmethod
     async def initialize(self) -> None:
         """Called once when plugin is loaded. Set up HTTP clients, validate creds."""

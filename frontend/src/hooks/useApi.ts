@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Task, Run, Plugin, Pipeline } from "@/lib/types";
+import type {
+  Task,
+  Run,
+  Plugin,
+  Pipeline,
+  PipelineCreateInput,
+  PipelineUpdateInput,
+  Tool,
+} from "@/lib/types";
 
 export function useTasks() {
   return useQuery<Task[]>({ queryKey: ["tasks"], queryFn: api.tasks.list });
@@ -37,6 +45,52 @@ export function usePipelines() {
   return useQuery<Pipeline[]>({
     queryKey: ["pipelines"],
     queryFn: api.pipelines.list,
+  });
+}
+
+export function usePipeline(id: string) {
+  return useQuery<Pipeline>({
+    queryKey: ["pipelines", id],
+    queryFn: () => api.pipelines.get(id),
+    enabled: !!id,
+  });
+}
+
+export function useTools() {
+  return useQuery<Tool[]>({
+    queryKey: ["tools"],
+    queryFn: api.tools.list,
+  });
+}
+
+export function useCreatePipeline() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: PipelineCreateInput) => api.pipelines.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+    },
+  });
+}
+
+export function useUpdatePipeline(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: PipelineUpdateInput) => api.pipelines.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+      queryClient.invalidateQueries({ queryKey: ["pipelines", id] });
+    },
+  });
+}
+
+export function useDeletePipeline() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.pipelines.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+    },
   });
 }
 
