@@ -1,67 +1,127 @@
+import { Plug, RotateCw } from "lucide-react";
 import { usePlugins } from "@/hooks/useApi";
-import { cn } from "@/lib/utils";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Panel,
+  StatusDot,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from "@/components/ui";
 
 export default function Plugins() {
-  const { data: plugins, isLoading, isError, error, refetch, isRefetching } = usePlugins();
+  const { data: plugins, isLoading, isError, error, refetch, isRefetching } =
+    usePlugins();
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-muted-foreground">
-          Integration status and health checks.
-        </p>
-        <button
-          onClick={() => refetch()}
-          disabled={isRefetching}
-          className="rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 transition-colors"
-        >
-          {isRefetching ? "Refreshing..." : "Refresh"}
-        </button>
+    <div className="space-y-5 anim-fade-in-up">
+      <PageHeader
+        title="plugins"
+        subtitle="integration health · updated on refresh"
+        action={
+          <Button
+            variant="secondary"
+            iconLeft={<RotateCw size={12} className={isRefetching ? "anim-spin" : ""} />}
+            onClick={() => refetch()}
+            disabled={isRefetching}
+          >
+            {isRefetching ? "checking..." : "refresh"}
+          </Button>
+        }
+      />
+
+      <Panel
+        title="integrations"
+        subtitle={plugins ? `${plugins.length} registered` : undefined}
+        bleed
+      >
+        {isLoading ? (
+          <div className="p-6 text-[12px] text-[hsl(var(--muted))]">loading...</div>
+        ) : isError ? (
+          <div className="p-6 text-[12px] text-[hsl(var(--danger))]">
+            failed to load: {(error as Error).message}
+          </div>
+        ) : !plugins || plugins.length === 0 ? (
+          <EmptyState
+            icon={Plug}
+            title="No plugins registered"
+            description="Enable plugins in your .env file (JIRA_ENABLED, GITHUB_ENABLED, etc.) and restart the backend."
+          />
+        ) : (
+          <Table>
+            <THead>
+              <Tr>
+                <Th className="w-[120px]">status</Th>
+                <Th className="w-[160px]">plugin</Th>
+                <Th>message</Th>
+                <Th>capabilities</Th>
+              </Tr>
+            </THead>
+            <TBody>
+              {plugins.map((p) => (
+                <Tr key={p.name}>
+                  <Td>
+                    <div className="flex items-center gap-2">
+                      <StatusDot tone={p.healthy ? "success" : "danger"} />
+                      <span
+                        className={`text-[10.5px] uppercase tracking-[0.1em] font-medium ${
+                          p.healthy
+                            ? "text-[hsl(var(--success))]"
+                            : "text-[hsl(var(--danger))]"
+                        }`}
+                      >
+                        {p.healthy ? "healthy" : "down"}
+                      </span>
+                    </div>
+                  </Td>
+                  <Td className="font-medium text-[hsl(var(--fg-strong))]">
+                    {p.name}
+                  </Td>
+                  <Td className="text-[hsl(var(--muted))]">{p.message}</Td>
+                  <Td>
+                    <div className="flex flex-wrap gap-1">
+                      {p.capabilities.map((cap) => (
+                        <Badge key={cap} variant="default" className="font-[var(--font-mono)]">
+                          {cap}
+                        </Badge>
+                      ))}
+                    </div>
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function PageHeader({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-end justify-between gap-4 border-b border-[hsl(var(--border))] pb-4">
+      <div>
+        <h1 className="text-[22px] font-semibold tracking-tight text-[hsl(var(--fg-strong))]">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="mt-1 text-[11.5px] text-[hsl(var(--muted))]">{subtitle}</p>
+        )}
       </div>
-
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading plugins...</p>
-      ) : isError ? (
-        <p className="text-sm text-red-600">
-          Failed to load plugins: {(error as Error).message}
-        </p>
-      ) : plugins?.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No plugins registered.</p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {plugins?.map((plugin) => (
-            <div
-              key={plugin.name}
-              className="rounded-lg border border-border bg-card p-4 space-y-3"
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "h-3 w-3 rounded-full shrink-0",
-                    plugin.healthy ? "bg-green-500" : "bg-red-500"
-                  )}
-                />
-                <h3 className="text-sm font-medium">{plugin.name}</h3>
-              </div>
-
-              <p className="text-xs text-muted-foreground">{plugin.message}</p>
-
-              {plugin.capabilities.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {plugin.capabilities.map((cap) => (
-                    <span
-                      key={cap}
-                      className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
-                    >
-                      {cap}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      {action}
     </div>
   );
 }

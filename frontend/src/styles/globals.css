@@ -1,56 +1,221 @@
 @import "tailwindcss";
 
-:root {
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 240 10% 3.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 3.9%;
-  --primary: 240 5.9% 10%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 240 4.8% 95.9%;
-  --secondary-foreground: 240 5.9% 10%;
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
-  --accent: 240 4.8% 95.9%;
-  --accent-foreground: 240 5.9% 10%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 5.9% 90%;
-  --input: 240 5.9% 90%;
-  --ring: 240 5.9% 10%;
-  --radius: 0.5rem;
+/* ============================================================
+   MISSION CONTROL — design tokens
+   Dark-first. Light mode is a proper cream-paper inversion.
+   ============================================================ */
+
+:root,
+.dark {
+  /* Surfaces */
+  --bg:             222 42% 6%;     /* deep navy-black */
+  --surface:        222 34% 9%;     /* cards, panels */
+  --surface-raised: 222 30% 12%;    /* modals, popovers */
+  --surface-hover:  222 28% 14%;
+
+  /* Borders */
+  --border:         222 20% 18%;
+  --border-strong:  222 18% 28%;
+
+  /* Text */
+  --fg:              38 22% 92%;    /* warm off-white */
+  --fg-strong:       38 28% 98%;
+  --muted:          222 12% 55%;
+  --subtle:         222 10% 40%;
+
+  /* Brand / accent — amber sodium */
+  --accent:          35 95% 60%;
+  --accent-hover:    35 95% 66%;
+  --accent-fg:      222 42% 6%;
+
+  /* Status */
+  --success:        150 55% 48%;
+  --success-soft:   150 40% 16%;
+  --warning:         40 95% 58%;
+  --warning-soft:    40 60% 16%;
+  --danger:           0 72% 58%;
+  --danger-soft:      0 45% 18%;
+  --running:        205 85% 60%;    /* cyan */
+  --running-soft:   205 50% 18%;
+  --info:           205 85% 60%;
+
+  /* Focus ring */
+  --ring:            35 95% 60%;
+
+  --radius: 0.375rem;
+  --radius-sm: 0.25rem;
+  --radius-lg: 0.5rem;
+
+  --font-mono: "JetBrains Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
 }
 
-.dark {
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
-  --card: 240 10% 3.9%;
-  --card-foreground: 0 0% 98%;
-  --popover: 240 10% 3.9%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 240 5.9% 10%;
-  --secondary: 240 3.7% 15.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
-  --accent: 240 3.7% 15.9%;
-  --accent-foreground: 0 0% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 240 4.9% 83.9%;
+.light {
+  --bg:             38 30% 96%;     /* cream */
+  --surface:        38 25% 99%;     /* paper */
+  --surface-raised:  0  0% 100%;
+  --surface-hover:  38 25% 93%;
+
+  --border:         30 15% 82%;
+  --border-strong:  30 12% 68%;
+
+  --fg:            222 42% 10%;
+  --fg-strong:     222 50% 4%;
+  --muted:         222 10% 40%;
+  --subtle:        222 10% 55%;
+
+  --accent:         25 85% 42%;     /* darker amber on cream */
+  --accent-hover:   25 85% 36%;
+  --accent-fg:      38 25% 99%;
+
+  --success:       150 55% 34%;
+  --success-soft:  150 40% 88%;
+  --warning:        30 90% 42%;
+  --warning-soft:   40 70% 88%;
+  --danger:          0 70% 42%;
+  --danger-soft:     0 60% 92%;
+  --running:       205 75% 40%;
+  --running-soft:  205 60% 88%;
+  --info:          205 75% 40%;
+
+  --ring:           25 85% 42%;
 }
+
+/* ============================================================
+   Base
+   ============================================================ */
 
 @layer base {
   * {
     border-color: hsl(var(--border));
   }
+
+  html {
+    color-scheme: dark light;
+    font-family: var(--font-mono);
+    font-feature-settings: "liga" 0, "calt" 1;
+  }
+
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
+    background-color: hsl(var(--bg));
+    color: hsl(var(--fg));
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Tabular numerics by default for data alignment */
+  table, .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: hsl(var(--accent) / 0.3);
+    color: hsl(var(--fg-strong));
+  }
+
+  /* Focus styles — amber ring, never remove it */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Scrollbars (webkit) */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border-strong));
+    border: 2px solid hsl(var(--bg));
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted));
   }
 }
+
+/* ============================================================
+   Animations
+   ============================================================ */
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slide-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Utility classes */
+.anim-pulse-dot  { animation: pulse-dot 1.4s ease-in-out infinite; }
+.anim-fade-in-up { animation: fade-in-up 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.anim-fade-in    { animation: fade-in 200ms ease-out both; }
+.anim-slide-in-up { animation: slide-in-up 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.anim-modal-in   { animation: modal-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.anim-spin       { animation: spin 900ms linear infinite; }
+
+/* Stagger utility: apply to parent, children get progressive delays */
+.stagger > * { animation-delay: calc(var(--stagger-step, 30ms) * var(--i, 0)); }

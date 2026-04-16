@@ -1,99 +1,205 @@
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Activity, Search } from "lucide-react";
 import { useRuns } from "@/hooks/useApi";
-import { cn } from "@/lib/utils";
 import type { Run } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { formatDuration, formatRelativeTime, shortId } from "@/lib/format";
+import {
+  Badge,
+  EmptyState,
+  Input,
+  Panel,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from "@/components/ui";
 
-function statusColor(status: Run["status"]): string {
-  switch (status) {
-    case "success":
-      return "bg-green-100 text-green-800";
-    case "failed":
-      return "bg-red-100 text-red-800";
-    case "running":
-      return "bg-yellow-100 text-yellow-800";
-    case "cancelled":
-      return "bg-orange-100 text-orange-800";
-    default:
-      return "bg-gray-100 text-gray-800";
-  }
-}
+type StatusFilter = "all" | "running" | "success" | "failed";
 
-function formatDuration(startedAt: string, finishedAt: string | null): string {
-  if (!finishedAt) return "—";
-  const start = new Date(startedAt).getTime();
-  const end = new Date(finishedAt).getTime();
-  const diffMs = end - start;
-  if (diffMs < 1000) return `${diffMs}ms`;
-  const seconds = Math.floor(diffMs / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}m ${remainingSeconds}s`;
-}
+const FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "all" },
+  { value: "running", label: "running" },
+  { value: "success", label: "success" },
+  { value: "failed", label: "failed" },
+];
 
 export default function Runs() {
   const { data: runs, isLoading, isError, error } = useRuns();
+  const [filter, setFilter] = useState<StatusFilter>("all");
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!runs) return [];
+    const q = query.trim().toLowerCase();
+    return runs.filter((r) => {
+      if (filter !== "all" && r.status !== filter) return false;
+      if (q && !r.task_id.toLowerCase().includes(q) && !r.id.toLowerCase().includes(q)) {
+        return false;
+      }
+      return true;
+    });
+  }, [runs, filter, query]);
+
+  const counts = useMemo(() => {
+    const base = { all: runs?.length ?? 0, running: 0, success: 0, failed: 0 };
+    runs?.forEach((r) => {
+      if (r.status in base) (base as Record<string, number>)[r.status]++;
+    });
+    return base;
+  }, [runs]);
 
   return (
-    <div className="space-y-6">
-      <p className="text-muted-foreground">Run history with status and duration.</p>
+    <div className="space-y-5 anim-fade-in-up">
+      <PageHeader title="runs" subtitle="execution history · auto-refreshing every 5s" />
 
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading runs...</p>
-      ) : isError ? (
-        <p className="text-sm text-red-600">
-          Failed to load runs: {(error as Error).message}
-        </p>
-      ) : runs?.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No runs recorded yet.</p>
-      ) : (
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left">
-                <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Run ID</th>
-                <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Task ID</th>
-                <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Started</th>
-                <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Duration</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs?.map((run) => (
-                <tr key={run.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-2">
-                    <Link
-                      to={`/runs/${run.id}`}
-                      className="font-mono text-xs hover:underline"
-                    >
-                      {run.id.slice(0, 8)}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
-                    {run.task_id.slice(0, 8)}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                        statusColor(run.status)
-                      )}
-                    >
-                      {run.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-xs text-muted-foreground">
-                    {new Date(run.started_at).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2 text-xs text-muted-foreground">
-                    {formatDuration(run.started_at, run.finished_at)}
-                  </td>
-                </tr>
+      <Panel
+        title="execution log"
+        subtitle={`${filtered.length} of ${runs?.length ?? 0}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search
+                size={11}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-[hsl(var(--subtle))]"
+              />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="id or task..."
+                className="pl-7 h-7 w-44 text-[11.5px]"
+              />
+            </div>
+            <div className="flex items-center gap-0.5">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  onClick={() => setFilter(f.value)}
+                  className={cn(
+                    "px-2 h-7 text-[10.5px] uppercase tracking-[0.08em] rounded-[var(--radius-sm)] transition-colors",
+                    filter === f.value
+                      ? "bg-[hsl(var(--accent)/0.15)] text-[hsl(var(--accent))]"
+                      : "text-[hsl(var(--muted))] hover:bg-[hsl(var(--surface-hover))]",
+                  )}
+                >
+                  {f.label}
+                  <span className="ml-1 text-[hsl(var(--subtle))]">
+                    {counts[f.value as keyof typeof counts]}
+                  </span>
+                </button>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </div>
+          </div>
+        }
+        bleed
+      >
+        {isLoading ? (
+          <div className="p-6 text-[12px] text-[hsl(var(--muted))]">loading runs...</div>
+        ) : isError ? (
+          <div className="p-6 text-[12px] text-[hsl(var(--danger))]">
+            failed to load: {(error as Error).message}
+          </div>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Activity}
+            title={runs?.length === 0 ? "No runs yet" : "No matching runs"}
+            description={
+              runs?.length === 0
+                ? "Trigger a pipeline from the Pipelines page to see executions here."
+                : "Try clearing the filter or search."
+            }
+          />
+        ) : (
+          <Table>
+            <THead>
+              <Tr>
+                <Th className="w-[120px]">time</Th>
+                <Th className="w-[130px]">status</Th>
+                <Th>task</Th>
+                <Th className="w-[100px]">duration</Th>
+                <Th className="w-[110px]">id</Th>
+              </Tr>
+            </THead>
+            <TBody>
+              {filtered.map((r) => (
+                <RunRow key={r.id} run={r} />
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </Panel>
     </div>
   );
 }
+
+function RunRow({ run }: { run: Run }) {
+  const running = run.status === "running";
+  return (
+    <Tr className={cn("relative", running && "bg-[hsl(var(--running)/0.04)]")}>
+      {running && (
+        <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-[hsl(var(--running))] anim-pulse-dot" />
+      )}
+      <Td className="text-[hsl(var(--muted))] tabular-nums">
+        <span title={new Date(run.started_at).toLocaleString()}>
+          {formatRelativeTime(run.started_at)}
+        </span>
+      </Td>
+      <Td>
+        <StatusPill status={run.status} />
+      </Td>
+      <Td className="font-medium">
+        <Link
+          to={`/runs/${run.id}`}
+          className="hover:text-[hsl(var(--accent))] transition-colors"
+        >
+          {run.task_id}
+        </Link>
+      </Td>
+      <Td className="tabular-nums text-[hsl(var(--muted))]">
+        {formatDuration(run.started_at, run.finished_at)}
+      </Td>
+      <Td className="font-[var(--font-mono)] text-[hsl(var(--subtle))]">
+        <Link
+          to={`/runs/${run.id}`}
+          className="hover:text-[hsl(var(--fg))] transition-colors"
+        >
+          {shortId(run.id)}
+        </Link>
+      </Td>
+    </Tr>
+  );
+}
+
+function StatusPill({ status }: { status: Run["status"] }) {
+  const variantMap = {
+    success: "success" as const,
+    failed: "danger" as const,
+    running: "running" as const,
+    cancelled: "warning" as const,
+    pending: "default" as const,
+  };
+  return (
+    <Badge variant={variantMap[status] ?? "default"} pulse={status === "running"} upper>
+      {status}
+    </Badge>
+  );
+}
+
+function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="flex items-end justify-between gap-4 border-b border-[hsl(var(--border))] pb-4">
+      <div>
+        <h1 className="text-[22px] font-semibold tracking-tight text-[hsl(var(--fg-strong))]">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="mt-1 text-[11.5px] text-[hsl(var(--muted))]">{subtitle}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+

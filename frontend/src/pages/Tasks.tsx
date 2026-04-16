@@ -1,201 +1,280 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useTasks, useCreateTask, useDeleteTask } from "@/hooks/useApi";
-import { cn } from "@/lib/utils";
+import { ListChecks, Plus, Trash2 } from "lucide-react";
+import {
+  useCreateTask,
+  useDeleteTask,
+  usePipelines,
+  useTasks,
+} from "@/hooks/useApi";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Input,
+  Label,
+  Modal,
+  Panel,
+  Select,
+  StatusDot,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from "@/components/ui";
+
+type TriggerType = "manual" | "cron" | "webhook" | "event";
+
+interface TaskFormData {
+  name: string;
+  pipeline: string;
+  trigger_type: TriggerType;
+  enabled: boolean;
+}
+
+const EMPTY: TaskFormData = {
+  name: "",
+  pipeline: "",
+  trigger_type: "manual",
+  enabled: true,
+};
 
 export default function Tasks() {
   const { data: tasks, isLoading, isError, error } = useTasks();
+  const { data: pipelines } = usePipelines();
   const createTask = useCreateTask();
   const deleteTask = useDeleteTask();
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState<{
-    name: string;
-    pipeline: string;
-    trigger_type: "manual" | "cron" | "webhook" | "event";
-    enabled: boolean;
-  }>({
-    name: "",
-    pipeline: "",
-    trigger_type: "manual",
-    enabled: true,
-  });
 
-  function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    createTask.mutate(formData, {
-      onSuccess: () => {
-        setShowForm(false);
-        setFormData({ name: "", pipeline: "", trigger_type: "manual" as const, enabled: true });
+  const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState<TaskFormData>(EMPTY);
+
+  function handleCreate() {
+    createTask.mutate(
+      {
+        name: formData.name,
+        pipeline: formData.pipeline,
+        trigger_type: formData.trigger_type,
+        enabled: formData.enabled,
       },
-    });
+      {
+        onSuccess: () => {
+          setShowModal(false);
+          setFormData(EMPTY);
+        },
+      },
+    );
   }
 
-  function handleDelete(id: string) {
-    if (window.confirm("Delete this task?")) {
-      deleteTask.mutate(id);
-    }
+  function handleDelete(id: string, name: string) {
+    if (window.confirm(`Delete task "${name}"?`)) deleteTask.mutate(id);
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-muted-foreground">Manage scheduled task definitions.</p>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          {showForm ? "Cancel" : "New Task"}
-        </button>
-      </div>
+    <div className="space-y-5 anim-fade-in-up">
+      <PageHeader
+        title="tasks"
+        subtitle="scheduled and manual pipeline triggers"
+        action={
+          <Button
+            variant="primary"
+            iconLeft={<Plus size={13} />}
+            onClick={() => setShowModal(true)}
+          >
+            new task
+          </Button>
+        }
+      />
 
-      {/* Create Task Form */}
-      {showForm && (
-        <form
-          onSubmit={handleCreate}
-          className="rounded-lg border border-border bg-card p-4 space-y-4"
-        >
-          <h3 className="text-sm font-medium">Create Task</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Name
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="block w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                placeholder="Task name"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Pipeline
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.pipeline}
-                onChange={(e) => setFormData({ ...formData, pipeline: e.target.value })}
-                className="block w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                placeholder="Pipeline ID"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Trigger Type
-              </label>
-              <select
-                value={formData.trigger_type}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    trigger_type: e.target.value as "manual" | "cron" | "webhook" | "event",
-                  })
-                }
-                className="block w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+      <Panel
+        title="task definitions"
+        subtitle={tasks ? `${tasks.length} total` : undefined}
+        bleed
+      >
+        {isLoading ? (
+          <div className="p-6 text-[12px] text-[hsl(var(--muted))]">loading...</div>
+        ) : isError ? (
+          <div className="p-6 text-[12px] text-[hsl(var(--danger))]">
+            failed to load: {(error as Error).message}
+          </div>
+        ) : !tasks || tasks.length === 0 ? (
+          <EmptyState
+            icon={ListChecks}
+            title="No tasks defined"
+            description="Tasks let you schedule pipelines via cron, trigger on webhook, or run manually on demand."
+            action={
+              <Button
+                variant="primary"
+                iconLeft={<Plus size={13} />}
+                onClick={() => setShowModal(true)}
               >
-                <option value="manual">Manual</option>
-                <option value="cron">Cron</option>
-                <option value="webhook">Webhook</option>
-                <option value="event">Event</option>
-              </select>
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={formData.enabled}
-                  onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                  className="rounded border-input"
-                />
-                Enabled
-              </label>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={createTask.isPending}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              {createTask.isPending ? "Creating..." : "Create"}
-            </button>
-          </div>
-          {createTask.isError && (
-            <p className="text-sm text-red-600">
-              Failed to create task: {(createTask.error as Error).message}
-            </p>
-          )}
-        </form>
-      )}
-
-      {/* Tasks Table */}
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading tasks...</p>
-      ) : isError ? (
-        <p className="text-sm text-red-600">
-          Failed to load tasks: {(error as Error).message}
-        </p>
-      ) : tasks?.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No tasks defined yet.</p>
-      ) : (
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left">
-                <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Name</th>
-                <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Pipeline</th>
-                <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Trigger</th>
-                <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Enabled</th>
-                <th className="px-4 py-2 text-xs font-medium text-muted-foreground">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks?.map((task) => (
-                <tr key={task.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-2">
+                create task
+              </Button>
+            }
+          />
+        ) : (
+          <Table>
+            <THead>
+              <Tr>
+                <Th>name</Th>
+                <Th>pipeline</Th>
+                <Th className="w-[110px]">trigger</Th>
+                <Th className="w-[100px]">enabled</Th>
+                <Th className="w-[60px]" />
+              </Tr>
+            </THead>
+            <TBody>
+              {tasks.map((task) => (
+                <Tr key={task.id}>
+                  <Td className="font-medium">
                     <Link
                       to={`/tasks/${task.id}`}
-                      className="font-medium hover:underline"
+                      className="hover:text-[hsl(var(--accent))] transition-colors"
                     >
                       {task.name}
                     </Link>
-                  </td>
-                  <td className="px-4 py-2 text-muted-foreground">{task.pipeline}</td>
-                  <td className="px-4 py-2">
-                    <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                  </Td>
+                  <Td className="font-[var(--font-mono)] text-[hsl(var(--muted))]">
+                    {task.pipeline}
+                  </Td>
+                  <Td>
+                    <Badge variant="default" upper>
                       {task.trigger_type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                        task.enabled
-                          ? "bg-green-100 text-green-800"
-                          : "bg-gray-100 text-gray-800"
-                      )}
-                    >
-                      {task.enabled ? "Yes" : "No"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
+                    </Badge>
+                  </Td>
+                  <Td>
+                    <div className="flex items-center gap-1.5">
+                      <StatusDot tone={task.enabled ? "success" : "muted"} />
+                      <span className="text-[11px] text-[hsl(var(--muted))]">
+                        {task.enabled ? "yes" : "no"}
+                      </span>
+                    </div>
+                  </Td>
+                  <Td>
                     <button
-                      onClick={() => handleDelete(task.id)}
-                      disabled={deleteTask.isPending}
-                      className="rounded-md px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                      onClick={() => handleDelete(task.id, task.name)}
+                      className="inline-flex items-center justify-center w-6 h-6 rounded-[var(--radius-sm)] text-[hsl(var(--subtle))] hover:text-[hsl(var(--danger))] hover:bg-[hsl(var(--danger)/0.08)] transition-colors"
+                      aria-label={`Delete ${task.name}`}
                     >
-                      Delete
+                      <Trash2 size={11} />
                     </button>
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </Table>
+        )}
+      </Panel>
+
+      <Modal
+        open={showModal}
+        onClose={() => {
+          setShowModal(false);
+          setFormData(EMPTY);
+        }}
+        title="New task"
+        subtitle="schedule or manually trigger a pipeline"
+        size="md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowModal(false)}>
+              cancel
+            </Button>
+            <Button
+              variant="primary"
+              loading={createTask.isPending}
+              disabled={!formData.name.trim() || !formData.pipeline.trim()}
+              onClick={handleCreate}
+            >
+              create task
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3.5">
+          <div>
+            <Label htmlFor="task-name">name</Label>
+            <Input
+              id="task-name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g. nightly jira summary"
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="task-pipeline">pipeline</Label>
+            <Select
+              id="task-pipeline"
+              value={formData.pipeline}
+              onChange={(e) => setFormData({ ...formData, pipeline: e.target.value })}
+              className="mt-1.5"
+            >
+              <option value="">select a pipeline...</option>
+              {pipelines?.map((p) => (
+                <option key={p.id} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="task-trigger">trigger type</Label>
+            <Select
+              id="task-trigger"
+              value={formData.trigger_type}
+              onChange={(e) =>
+                setFormData({ ...formData, trigger_type: e.target.value as TriggerType })
+              }
+              className="mt-1.5"
+            >
+              <option value="manual">manual — run on demand</option>
+              <option value="cron">cron — scheduled</option>
+              <option value="webhook">webhook — incoming trigger</option>
+              <option value="event">event — event-driven</option>
+            </Select>
+          </div>
+          <label className="flex items-center gap-2 pt-1 text-[12px] text-[hsl(var(--fg))] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.enabled}
+              onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+              className="accent-[hsl(var(--accent))]"
+            />
+            enabled
+          </label>
+          {createTask.isError && (
+            <div className="px-3 py-2 bg-[hsl(var(--danger-soft))] border border-[hsl(var(--danger)/0.35)] rounded-[var(--radius-sm)] text-[11.5px] text-[hsl(var(--danger))]">
+              {(createTask.error as Error).message}
+            </div>
+          )}
         </div>
-      )}
+      </Modal>
+    </div>
+  );
+}
+
+function PageHeader({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-end justify-between gap-4 border-b border-[hsl(var(--border))] pb-4">
+      <div>
+        <h1 className="text-[22px] font-semibold tracking-tight text-[hsl(var(--fg-strong))]">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="mt-1 text-[11.5px] text-[hsl(var(--muted))]">{subtitle}</p>
+        )}
+      </div>
+      {action}
     </div>
   );
 }

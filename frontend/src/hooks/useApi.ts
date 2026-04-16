@@ -23,7 +23,11 @@ export function useTask(id: string) {
 }
 
 export function useRuns() {
-  return useQuery<Run[]>({ queryKey: ["runs"], queryFn: api.runs.list });
+  return useQuery<Run[]>({
+    queryKey: ["runs"],
+    queryFn: api.runs.list,
+    refetchInterval: 5000,
+  });
 }
 
 export function useRun(id: string) {
@@ -31,6 +35,8 @@ export function useRun(id: string) {
     queryKey: ["runs", id],
     queryFn: () => api.runs.get(id),
     enabled: !!id,
+    refetchInterval: (query) =>
+      query.state.data?.status === "running" ? 2000 : false,
   });
 }
 

@@ -1,4 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Edit3,
+  Play,
+  Plus,
+  Trash2,
+  Workflow,
+  Wrench,
+} from "lucide-react";
 import {
   useCreatePipeline,
   useDeletePipeline,
@@ -8,7 +18,19 @@ import {
   useUpdatePipeline,
 } from "@/hooks/useApi";
 import type { Pipeline } from "@/lib/types";
+import { extractToolRefs } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import {
+  Badge,
+  Button,
+  CopyButton,
+  EmptyState,
+  Input,
+  Label,
+  Modal,
+  Panel,
+  Textarea,
+} from "@/components/ui";
 
 type DialogMode = "create" | "edit" | "run" | null;
 
@@ -16,7 +38,7 @@ interface EditorForm {
   name: string;
   description: string;
   system_prompt: string;
-  default_params: string; // raw JSON
+  default_params: string;
 }
 
 const EMPTY_FORM: EditorForm = {
@@ -38,7 +60,7 @@ export default function Pipelines() {
   const [form, setForm] = useState<EditorForm>(EMPTY_FORM);
   const [paramsInput, setParamsInput] = useState("{}");
   const [formError, setFormError] = useState<string | null>(null);
-  const [showTools, setShowTools] = useState(false);
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
 
   const updatePipeline = useUpdatePipeline(activePipeline?.id ?? "");
 
@@ -80,29 +102,22 @@ export default function Pipelines() {
     try {
       const v = JSON.parse(raw);
       if (typeof v !== "object" || v === null || Array.isArray(v)) {
-        setFormError("Must be a JSON object");
+        setFormError("must be a JSON object");
         return null;
       }
       return v as Record<string, unknown>;
     } catch (e) {
-      setFormError(`Invalid JSON: ${(e as Error).message}`);
+      setFormError(`invalid JSON: ${(e as Error).message}`);
       return null;
     }
   }
 
   function handleSaveCreate() {
     setFormError(null);
-    if (!form.name.trim()) {
-      setFormError("Name is required");
-      return;
-    }
-    if (!form.system_prompt.trim()) {
-      setFormError("System prompt is required");
-      return;
-    }
+    if (!form.name.trim()) return setFormError("name is required");
+    if (!form.system_prompt.trim()) return setFormError("system prompt is required");
     const params = parseJsonOrError(form.default_params);
     if (params === null) return;
-
     createPipeline.mutate(
       {
         name: form.name.trim(),
@@ -122,7 +137,6 @@ export default function Pipelines() {
     setFormError(null);
     const params = parseJsonOrError(form.default_params);
     if (params === null) return;
-
     updatePipeline.mutate(
       {
         name: form.name,
@@ -142,13 +156,9 @@ export default function Pipelines() {
     setFormError(null);
     const params = parseJsonOrError(paramsInput);
     if (params === null) return;
-
     runPipeline.mutate(
       { id: activePipeline.id, params },
-      {
-        onSuccess: closeDialog,
-        onError: (err) => setFormError((err as Error).message),
-      },
+      { onSuccess: closeDialog, onError: (err) => setFormError((err as Error).message) },
     );
   }
 
@@ -160,242 +170,360 @@ export default function Pipelines() {
   const isSaving = createPipeline.isPending || updatePipeline.isPending;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-muted-foreground">
-          Prompt-driven pipelines. Edit the system prompt to change behavior — the
-          orchestrator will call tools based on what you write.
-        </p>
-        <button
-          onClick={openCreate}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          + Create Pipeline
-        </button>
-      </div>
-
-      {/* Tools reference panel */}
-      <div className="rounded-lg border border-border bg-card">
-        <button
-          onClick={() => setShowTools((s) => !s)}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium"
-        >
-          <span>
-            Available Tools {tools ? `(${tools.length})` : ""}
-          </span>
-          <span className="text-muted-foreground">{showTools ? "▼" : "▶"}</span>
-        </button>
-        {showTools && tools && (
-          <div className="border-t border-border px-4 py-3 space-y-2 max-h-80 overflow-y-auto">
-            {tools.map((t) => (
-              <div key={t.name} className="text-xs">
-                <span className="font-mono font-medium">{t.name}</span>
-                <span className="text-muted-foreground"> — {t.description}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+    <div className="space-y-5 anim-fade-in-up">
+      <PageHeader
+        title="pipelines"
+        subtitle="prompt-driven agents · composed from plugin tools"
+        action={
+          <Button variant="primary" iconLeft={<Plus size={13} />} onClick={openCreate}>
+            new pipeline
+          </Button>
+        }
+      />
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading pipelines...</p>
+        <Panel title="agents">
+          <div className="text-[12px] text-[hsl(var(--muted))]">loading pipelines...</div>
+        </Panel>
       ) : isError ? (
-        <p className="text-sm text-red-600">
-          Failed to load pipelines: {(error as Error).message}
-        </p>
+        <Panel title="error">
+          <div className="text-[12px] text-[hsl(var(--danger))]">
+            failed to load pipelines: {(error as Error).message}
+          </div>
+        </Panel>
       ) : pipelines?.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No pipelines yet. Click "+ Create Pipeline".</p>
+        <Panel title="agents">
+          <EmptyState
+            icon={Workflow}
+            title="No pipelines yet"
+            description="Pipelines are system prompts that orchestrate plugin tools and Claude Code. Create one to get started."
+            action={
+              <Button variant="primary" iconLeft={<Plus size={13} />} onClick={openCreate}>
+                create pipeline
+              </Button>
+            }
+          />
+        </Panel>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pipelines?.map((p) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 stagger">
+          {pipelines?.map((p, i) => (
             <div
               key={p.id}
-              className="rounded-lg border border-border bg-card p-4 space-y-3"
+              style={{ ["--i" as string]: i }}
+              className="anim-fade-in-up"
             >
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="text-sm font-medium break-words">{p.name}</h3>
-                <div className="flex gap-1 shrink-0">
-                  {p.is_builtin && (
-                    <span className="text-[10px] rounded px-1.5 py-0.5 bg-muted text-muted-foreground">
-                      built-in
-                    </span>
-                  )}
-                  {p.source === "legacy" && (
-                    <span className="text-[10px] rounded px-1.5 py-0.5 bg-amber-100 text-amber-800">
-                      legacy
-                    </span>
-                  )}
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground min-h-[2.5rem]">
-                {p.description || "No description"}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => openRun(p)}
-                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  Run
-                </button>
-                {p.source !== "legacy" && (
-                  <button
-                    onClick={() => openEdit(p)}
-                    className="rounded-md bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                  >
-                    Edit
-                  </button>
-                )}
-                {!p.is_builtin && p.source === "db" && (
-                  <button
-                    onClick={() => handleDelete(p)}
-                    className="rounded-md bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 transition-colors"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
+              <PipelineCard
+                pipeline={p}
+                expanded={expandedCard === p.id}
+                onToggle={() => setExpandedCard(expandedCard === p.id ? null : p.id)}
+                onRun={() => openRun(p)}
+                onEdit={() => openEdit(p)}
+                onDelete={() => handleDelete(p)}
+              />
             </div>
           ))}
         </div>
       )}
 
-      {/* Create / Edit Dialog */}
-      {(dialogMode === "create" || dialogMode === "edit") && (
-        <Modal onClose={closeDialog}>
-          <h3 className="text-sm font-medium">
-            {dialogMode === "create" ? "Create Pipeline" : `Edit: ${activePipeline?.name}`}
-          </h3>
-          <Field label="Name">
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              disabled={dialogMode === "edit" && activePipeline?.is_builtin}
-              className="block w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-            />
-          </Field>
-          <Field label="Description">
-            <input
-              type="text"
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className="block w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </Field>
-          <Field label="System Prompt">
-            <textarea
+      {/* Create / Edit Modal */}
+      <Modal
+        open={dialogMode === "create" || dialogMode === "edit"}
+        onClose={closeDialog}
+        title={dialogMode === "create" ? "Create pipeline" : `Edit · ${activePipeline?.name}`}
+        subtitle={dialogMode === "edit" ? "prompt-driven agent" : "define a new prompt-driven agent"}
+        size="xl"
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeDialog}>
+              cancel
+            </Button>
+            <Button
+              variant="primary"
+              loading={isSaving}
+              onClick={dialogMode === "create" ? handleSaveCreate : handleSaveEdit}
+            >
+              {dialogMode === "create" ? "create pipeline" : "save changes"}
+            </Button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-[1fr_1.4fr] gap-4 min-h-[480px]">
+          {/* Left: metadata */}
+          <div className="space-y-3.5">
+            <div>
+              <Label htmlFor="pipe-name">name</Label>
+              <Input
+                id="pipe-name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. jira_to_pr_agent"
+                disabled={dialogMode === "edit" && activePipeline?.is_builtin}
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <Label htmlFor="pipe-desc">description</Label>
+              <Input
+                id="pipe-desc"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="one-line summary of what this agent does"
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <Label htmlFor="pipe-params">default params (json)</Label>
+              <Textarea
+                id="pipe-params"
+                value={form.default_params}
+                onChange={(e) => setForm({ ...form, default_params: e.target.value })}
+                rows={8}
+                className="mt-1.5 font-[var(--font-mono)]"
+                spellCheck={false}
+              />
+            </div>
+
+            {tools && tools.length > 0 && (
+              <div>
+                <Label>available tools · {tools.length}</Label>
+                <div className="mt-1.5 border border-[hsl(var(--border))] rounded-[var(--radius-sm)] max-h-40 overflow-y-auto p-2 space-y-1">
+                  {tools.map((t) => (
+                    <div key={t.name} className="text-[11px] leading-relaxed">
+                      <span className="text-[hsl(var(--accent))] font-semibold">
+                        {t.name}
+                      </span>
+                      <span className="text-[hsl(var(--muted))]"> — {t.description}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right: system prompt editor */}
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="pipe-prompt">system prompt</Label>
+              <span className="text-[10px] text-[hsl(var(--subtle))]">
+                reference tools as <code className="text-[hsl(var(--accent))]">plugin__action</code>
+              </span>
+            </div>
+            <Textarea
+              id="pipe-prompt"
               value={form.system_prompt}
               onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
-              rows={14}
-              className="block w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder="Describe what the pipeline does. Reference tools by name, e.g. jira__read_ticket, github__clone_repo..."
+              className="mt-1.5 flex-1 min-h-[440px] font-[var(--font-mono)] text-[12px] leading-[1.65]"
+              spellCheck={false}
+              placeholder="You are an agent that..."
             />
-          </Field>
-          <Field label="Default Params (JSON)">
-            <textarea
-              value={form.default_params}
-              onChange={(e) => setForm({ ...form, default_params: e.target.value })}
-              rows={4}
-              className="block w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </Field>
-          {formError && <p className="text-sm text-red-600">{formError}</p>}
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={closeDialog}
-              className="rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={dialogMode === "create" ? handleSaveCreate : handleSaveEdit}
-              disabled={isSaving}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              {isSaving ? "Saving..." : "Save"}
-            </button>
           </div>
-        </Modal>
-      )}
+        </div>
+        {formError && (
+          <div className="mt-3 px-3 py-2 bg-[hsl(var(--danger-soft))] border border-[hsl(var(--danger)/0.35)] rounded-[var(--radius-sm)] text-[11.5px] text-[hsl(var(--danger))]">
+            {formError}
+          </div>
+        )}
+      </Modal>
 
-      {/* Run Dialog */}
-      {dialogMode === "run" && activePipeline && (
-        <Modal onClose={closeDialog}>
-          <h3 className="text-sm font-medium">Run: {activePipeline.name}</h3>
-          <p className="text-xs text-muted-foreground">{activePipeline.description}</p>
-          {activePipeline.system_prompt && (
-            <details className="rounded border border-border">
-              <summary className="cursor-pointer px-3 py-2 text-xs text-muted-foreground">
-                View system prompt
-              </summary>
-              <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap border-t border-border max-h-48 overflow-y-auto">
-                {activePipeline.system_prompt}
-              </pre>
-            </details>
-          )}
-          <Field label="Params (JSON)">
-            <textarea
-              value={paramsInput}
-              onChange={(e) => setParamsInput(e.target.value)}
-              rows={6}
-              className="block w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </Field>
-          {formError && <p className="text-sm text-red-600">{formError}</p>}
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={closeDialog}
-              className="rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
+      {/* Run Modal */}
+      <Modal
+        open={dialogMode === "run"}
+        onClose={closeDialog}
+        title={`Run · ${activePipeline?.name ?? ""}`}
+        subtitle={activePipeline?.description}
+        size="lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeDialog}>
+              cancel
+            </Button>
+            <Button
+              variant="primary"
+              iconLeft={<Play size={12} />}
+              loading={runPipeline.isPending}
               onClick={handleRun}
-              disabled={runPipeline.isPending}
-              className={cn(
-                "rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground",
-                "hover:bg-primary/90 disabled:opacity-50 transition-colors",
-              )}
             >
-              {runPipeline.isPending ? "Running..." : "Run"}
-            </button>
+              dispatch
+            </Button>
+          </>
+        }
+      >
+        {activePipeline?.system_prompt && (
+          <details className="group mb-3 bg-[hsl(var(--bg))] border border-[hsl(var(--border))] rounded-[var(--radius-sm)]">
+            <summary className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer list-none">
+              <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] text-[hsl(var(--muted))]">
+                <ChevronRight
+                  size={11}
+                  className="transition-transform group-open:rotate-90"
+                />
+                system prompt
+              </span>
+              <CopyButton value={activePipeline.system_prompt} size="sm" />
+            </summary>
+            <pre className="px-3 pb-3 text-[11.5px] font-[var(--font-mono)] whitespace-pre-wrap text-[hsl(var(--muted))] border-t border-[hsl(var(--border))] pt-3 max-h-64 overflow-y-auto">
+              {activePipeline.system_prompt}
+            </pre>
+          </details>
+        )}
+        <div>
+          <Label htmlFor="run-params">params (json)</Label>
+          <Textarea
+            id="run-params"
+            value={paramsInput}
+            onChange={(e) => setParamsInput(e.target.value)}
+            rows={6}
+            className="mt-1.5 font-[var(--font-mono)]"
+            spellCheck={false}
+          />
+        </div>
+        {formError && (
+          <div className="mt-3 px-3 py-2 bg-[hsl(var(--danger-soft))] border border-[hsl(var(--danger)/0.35)] rounded-[var(--radius-sm)] text-[11.5px] text-[hsl(var(--danger))]">
+            {formError}
           </div>
-        </Modal>
-      )}
-
-      {runPipeline.isSuccess && !dialogMode && (
-        <p className="text-sm text-green-600">
-          Pipeline triggered successfully. Check the Runs page.
-        </p>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }
 
-function Modal({
-  children,
-  onClose,
+function PageHeader({
+  title,
+  subtitle,
+  action,
 }: {
-  children: React.ReactNode;
-  onClose: () => void;
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative rounded-lg border border-border bg-white text-gray-900 p-6 shadow-xl w-full max-w-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-        {children}
+    <div className="flex items-end justify-between gap-4 border-b border-[hsl(var(--border))] pb-4">
+      <div>
+        <h1 className="text-[22px] font-semibold tracking-tight text-[hsl(var(--fg-strong))]">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="mt-1 text-[11.5px] text-[hsl(var(--muted))]">{subtitle}</p>
+        )}
       </div>
+      {action}
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function PipelineCard({
+  pipeline,
+  expanded,
+  onToggle,
+  onRun,
+  onEdit,
+  onDelete,
+}: {
+  pipeline: Pipeline;
+  expanded: boolean;
+  onToggle: () => void;
+  onRun: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const toolsReferenced = useMemo(
+    () => extractToolRefs(pipeline.system_prompt),
+    [pipeline.system_prompt],
+  );
+  const canEdit = pipeline.source !== "legacy";
+  const canDelete = !pipeline.is_builtin && pipeline.source === "db";
+
   return (
-    <div>
-      <label className="block text-xs font-medium text-muted-foreground mb-1">
-        {label}
-      </label>
-      {children}
-    </div>
+    <Panel
+      title={pipeline.name}
+      actions={
+        <>
+          {pipeline.is_builtin && (
+            <Badge variant="accent" upper>
+              built-in
+            </Badge>
+          )}
+          {pipeline.source === "legacy" && (
+            <Badge variant="outline" upper>
+              legacy
+            </Badge>
+          )}
+        </>
+      }
+      className="h-full flex flex-col"
+      contentClassName="flex-1 flex flex-col"
+    >
+      <p className="text-[12px] text-[hsl(var(--muted))] leading-relaxed min-h-[36px]">
+        {pipeline.description || "no description"}
+      </p>
+
+      {toolsReferenced.length > 0 && (
+        <div className="mt-3 flex items-start gap-2">
+          <Wrench size={11} className="mt-0.5 text-[hsl(var(--subtle))] shrink-0" />
+          <div className="flex flex-wrap gap-1">
+            {toolsReferenced.map((t) => (
+              <Badge key={t} variant="default" className="font-[var(--font-mono)]">
+                {t}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <Button
+          variant="primary"
+          size="sm"
+          iconLeft={<Play size={11} />}
+          onClick={onRun}
+        >
+          run
+        </Button>
+        {canEdit && (
+          <Button
+            variant="secondary"
+            size="sm"
+            iconLeft={<Edit3 size={11} />}
+            onClick={onEdit}
+          >
+            edit
+          </Button>
+        )}
+        <button
+          onClick={onToggle}
+          className={cn(
+            "inline-flex items-center gap-1 h-7 px-2 text-[11px] rounded-[var(--radius-sm)]",
+            "text-[hsl(var(--muted))] hover:text-[hsl(var(--fg))] hover:bg-[hsl(var(--surface-hover))]",
+            "transition-colors",
+          )}
+        >
+          <ChevronDown
+            size={11}
+            className={cn("transition-transform", expanded && "rotate-180")}
+          />
+          prompt
+        </button>
+        {canDelete && (
+          <button
+            onClick={onDelete}
+            className="ml-auto inline-flex items-center justify-center w-7 h-7 rounded-[var(--radius-sm)] text-[hsl(var(--subtle))] hover:text-[hsl(var(--danger))] hover:bg-[hsl(var(--danger)/0.08)] transition-colors"
+            aria-label="Delete pipeline"
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
+      </div>
+
+      {expanded && pipeline.system_prompt && (
+        <div className="mt-3 pt-3 border-t border-[hsl(var(--border))] anim-fade-in">
+          <div className="flex items-center justify-between mb-1.5">
+            <Label>system prompt</Label>
+            <CopyButton value={pipeline.system_prompt} size="sm" />
+          </div>
+          <pre className="text-[11px] font-[var(--font-mono)] whitespace-pre-wrap text-[hsl(var(--muted))] max-h-64 overflow-y-auto leading-relaxed bg-[hsl(var(--bg))] p-2.5 rounded-[var(--radius-sm)] border border-[hsl(var(--border))]">
+            {pipeline.system_prompt}
+          </pre>
+        </div>
+      )}
+    </Panel>
   );
 }
