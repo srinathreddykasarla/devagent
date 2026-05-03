@@ -8,14 +8,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from devagent.api.deps import get_db, get_event_bus, get_pipelines, get_tool_registry
+from devagent.api.deps import get_db, get_event_bus, get_tool_registry
 from devagent.config import get_settings
 from devagent.core.event_bus import EventBus
 from devagent.core.runner import run_orchestrated_pipeline
-from devagent.core.runner import run_pipeline as execute_pipeline_run
 from devagent.models import PipelineDefinition
 from devagent.orchestrator.tool_registry import ToolRegistry
-from devagent.pipelines.registry import PipelineRegistry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["pipelines"])
@@ -30,6 +28,7 @@ class PipelineCreateRequest(BaseModel):
     description: str = ""
     system_prompt: str
     default_params: dict = {}
+    param_schema: list[dict] | None = None
 
 
 class PipelineUpdateRequest(BaseModel):
@@ -37,6 +36,7 @@ class PipelineUpdateRequest(BaseModel):
     description: str | None = None
     system_prompt: str | None = None
     default_params: dict | None = None
+    param_schema: list[dict] | None = None
 
 
 def _db_pipeline_to_dict(p: PipelineDefinition) -> dict:
@@ -46,6 +46,7 @@ def _db_pipeline_to_dict(p: PipelineDefinition) -> dict:
         "description": p.description,
         "system_prompt": p.system_prompt,
         "default_params": p.default_params or {},
+        "param_schema": p.param_schema,
         "is_builtin": p.is_builtin,
         "source": "db",
         "created_at": p.created_at.isoformat() if p.created_at else None,
@@ -53,40 +54,13 @@ def _db_pipeline_to_dict(p: PipelineDefinition) -> dict:
     }
 
 
-def _legacy_pipeline_to_dict(p: dict) -> dict:
-    return {
-        "id": p["id"],
-        "name": p["name"],
-        "description": p["description"],
-        "system_prompt": "",
-        "default_params": {},
-        "is_builtin": True,
-        "source": "legacy",
-        "created_at": None,
-        "updated_at": None,
-    }
-
-
 @router.get("/")
 async def list_pipelines(
-    legacy: PipelineRegistry | None = Depends(get_pipelines),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict]:
-    """List pipelines from both DB (orchestrated) and legacy registry."""
-    results = []
-    db_names: set[str] = set()
-
+    """List all pipelines from the database."""
     db_pipelines = (await db.execute(select(PipelineDefinition))).scalars().all()
-    for p in db_pipelines:
-        results.append(_db_pipeline_to_dict(p))
-        db_names.add(p.name)
-
-    if legacy is not None:
-        for p in legacy.list_all():
-            if p["id"] not in db_names:
-                results.append(_legacy_pipeline_to_dict(p))
-
-    return results
+    return [_db_pipeline_to_dict(p) for p in db_pipelines]
 
 
 @router.get("/{pipeline_id}")
@@ -119,6 +93,7 @@ async def create_pipeline(
         description=body.description,
         system_prompt=body.system_prompt,
         default_params=body.default_params,
+        param_schema=body.param_schema,
         is_builtin=False,
     )
     db.add(p)
@@ -145,6 +120,8 @@ async def update_pipeline(
         p.system_prompt = body.system_prompt
     if body.default_params is not None:
         p.default_params = body.default_params
+    if body.param_schema is not None:
+        p.param_schema = body.param_schema
 
     await db.commit()
     await db.refresh(p)
@@ -167,13 +144,11 @@ async def delete_pipeline(pipeline_id: str, db: AsyncSession = Depends(get_db)) 
 async def run_pipeline(
     pipeline_id: str,
     body: PipelineRunRequest,
-    legacy: PipelineRegistry | None = Depends(get_pipelines),
     tool_registry: ToolRegistry | None = Depends(get_tool_registry),
     db: AsyncSession = Depends(get_db),
     event_bus: EventBus | None = Depends(get_event_bus),
 ) -> dict:
-    """Run a pipeline. Prefers DB (orchestrated) path; falls back to legacy registry."""
-    # Try DB lookup first (by id or name)
+    """Run a pipeline via the orchestrator."""
     pipeline_def = await db.get(PipelineDefinition, pipeline_id)
     if pipeline_def is None:
         result = await db.execute(
@@ -181,46 +156,35 @@ async def run_pipeline(
         )
         pipeline_def = result.scalar_one_or_none()
 
-    if pipeline_def is not None:
-        if tool_registry is None:
-            raise HTTPException(status_code=503, detail="Tool registry not initialized")
-        settings = get_settings()
-        if not settings.anthropic_api_key:
+    if pipeline_def is None:
+        raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found")
+
+    if tool_registry is None:
+        raise HTTPException(status_code=503, detail="Tool registry not initialized")
+    settings = get_settings()
+    if not settings.anthropic_api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="ANTHROPIC_API_KEY is required to run orchestrated pipelines",
+        )
+    if pipeline_def.param_schema:
+        missing = [
+            s["key"] for s in pipeline_def.param_schema
+            if s.get("required") and not body.params.get(s["key"])
+        ]
+        if missing:
             raise HTTPException(
                 status_code=400,
-                detail="ANTHROPIC_API_KEY is required to run orchestrated pipelines",
+                detail=f"Missing required params: {', '.join(missing)}",
             )
-        task_run = await run_orchestrated_pipeline(
-            pipeline_def=pipeline_def,
-            params=body.params,
-            tool_registry=tool_registry,
-            api_key=settings.anthropic_api_key,
-            model=settings.anthropic_model,
-            db=db,
-            task_id=None,
-            event_bus=event_bus,
-        )
-        return {
-            "run_id": task_run.id,
-            "status": task_run.status.value,
-            "result": task_run.result,
-            "error": task_run.error,
-        }
-
-    # Legacy fallback
-    if legacy is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found")
-    try:
-        legacy.get(pipeline_id)
-    except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-
-    task_run = await execute_pipeline_run(
-        pipeline_name=pipeline_id,
+    task_run = await run_orchestrated_pipeline(
+        pipeline_def=pipeline_def,
         params=body.params,
-        task_id=None,
-        pipelines=legacy,
+        tool_registry=tool_registry,
+        api_key=settings.anthropic_api_key,
+        model=settings.anthropic_model,
         db=db,
+        task_id=None,
         event_bus=event_bus,
     )
     return {

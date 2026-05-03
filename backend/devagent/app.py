@@ -43,7 +43,11 @@ BUILTIN_PIPELINES = [
             "Always reference the ticket ID in branch names and PR titles. "
             "Be concise in your intermediate reasoning."
         ),
-        "default_params": {},
+        "default_params": {"jira_id": ""},
+        "param_schema": [
+            {"key": "jira_id", "label": "Jira Ticket ID", "type": "string", "required": True, "placeholder": "e.g. PROJ-123"},
+            {"key": "repo_url", "label": "Repository URL", "type": "string", "required": False, "placeholder": "https://github.com/org/repo (optional)"},
+        ],
     },
     {
         "name": "jira_summary_agent",
@@ -64,7 +68,11 @@ BUILTIN_PIPELINES = [
             "   - Recommendations for what to tackle next\n\n"
             "Reference specific ticket IDs. Keep the summary under 500 words."
         ),
-        "default_params": {},
+        "default_params": {"project_key": "", "status_filter": ""},
+        "param_schema": [
+            {"key": "project_key", "label": "Project Key", "type": "string", "required": True, "placeholder": "e.g. PROJ"},
+            {"key": "status_filter", "label": "Status Filter", "type": "string", "required": False, "placeholder": "e.g. In Progress, To Do"},
+        ],
     },
 ]
 
@@ -92,10 +100,15 @@ async def _seed_builtin_pipelines() -> None:
                         description=p["description"],
                         system_prompt=p["system_prompt"],
                         default_params=p["default_params"],
+                        param_schema=p.get("param_schema"),
                         is_builtin=True,
                     )
                 )
                 logger.info("Seeded built-in pipeline '%s'", p["name"])
+            elif existing.default_params != p["default_params"] or existing.param_schema != p.get("param_schema"):
+                existing.default_params = p["default_params"]
+                existing.param_schema = p.get("param_schema")
+                logger.info("Updated built-in pipeline '%s'", p["name"])
         await session.commit()
         break
 
@@ -171,19 +184,6 @@ async def lifespan(app: FastAPI):
         "Tool registry built with %d tools",
         len(app.state.tool_registry.get_tool_definitions()),
     )
-
-    from devagent.pipelines.jira_to_pr import JiraToPRPipeline
-    from devagent.pipelines.jira_summary import JiraSummaryPipeline
-    from devagent.pipelines.registry import PipelineRegistry
-
-    pipeline_registry = PipelineRegistry()
-    # Only register Jira-to-PR if both jira and github plugins are available
-    if "jira" in registry._plugins and "github" in registry._plugins:
-        pipeline_registry.register(JiraToPRPipeline(registry))
-    # Jira summary only needs the jira plugin
-    if "jira" in registry._plugins:
-        pipeline_registry.register(JiraSummaryPipeline(registry))
-    app.state.pipelines = pipeline_registry
 
     # Seed built-in prompt-based pipelines into the DB
     await _seed_builtin_pipelines()

@@ -23,6 +23,7 @@ class PipelineDefinition(Base):
     description: Mapped[str] = mapped_column(String, nullable=False, default="")
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     default_params: Mapped[dict] = mapped_column(JSON, default=dict)
+    param_schema: Mapped[list | None] = mapped_column(JSON, default=None, nullable=True)
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)

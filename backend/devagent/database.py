@@ -24,6 +24,19 @@ async def init_db(database_url: str) -> None:
 
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Migrate: add param_schema column if missing (for existing databases)
+        from sqlalchemy import inspect as sa_inspect, text
+
+        def _migrate_param_schema(connection):
+            inspector = sa_inspect(connection)
+            columns = [c["name"] for c in inspector.get_columns("pipeline_definitions")]
+            if "param_schema" not in columns:
+                connection.execute(text(
+                    "ALTER TABLE pipeline_definitions ADD COLUMN param_schema JSON DEFAULT NULL"
+                ))
+                logger.info("Migrated: added param_schema column to pipeline_definitions")
+
+        await conn.run_sync(_migrate_param_schema)
 
     safe_url = database_url.split("@")[-1] if "@" in database_url else database_url
     logger.info("Database initialized: %s", safe_url)

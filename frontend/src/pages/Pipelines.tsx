@@ -17,7 +17,7 @@ import {
   useTools,
   useUpdatePipeline,
 } from "@/hooks/useApi";
-import type { Pipeline } from "@/lib/types";
+import type { ParamFieldDef, Pipeline } from "@/lib/types";
 import { extractToolRefs } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
@@ -39,6 +39,7 @@ interface EditorForm {
   description: string;
   system_prompt: string;
   default_params: string;
+  param_schema: ParamFieldDef[];
 }
 
 const EMPTY_FORM: EditorForm = {
@@ -46,6 +47,7 @@ const EMPTY_FORM: EditorForm = {
   description: "",
   system_prompt: "",
   default_params: "{}",
+  param_schema: [],
 };
 
 export default function Pipelines() {
@@ -59,6 +61,7 @@ export default function Pipelines() {
   const [activePipeline, setActivePipeline] = useState<Pipeline | null>(null);
   const [form, setForm] = useState<EditorForm>(EMPTY_FORM);
   const [paramsInput, setParamsInput] = useState("{}");
+  const [schemaParams, setSchemaParams] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
 
@@ -78,6 +81,7 @@ export default function Pipelines() {
       description: p.description,
       system_prompt: p.system_prompt,
       default_params: JSON.stringify(p.default_params ?? {}, null, 2),
+      param_schema: p.param_schema ?? [],
     });
     setFormError(null);
     setDialogMode("edit");
@@ -86,6 +90,13 @@ export default function Pipelines() {
   function openRun(p: Pipeline) {
     setActivePipeline(p);
     setParamsInput(JSON.stringify(p.default_params ?? {}, null, 2));
+    if (p.param_schema && p.param_schema.length > 0) {
+      const initial: Record<string, string> = {};
+      for (const field of p.param_schema) {
+        initial[field.key] = String(p.default_params?.[field.key] ?? "");
+      }
+      setSchemaParams(initial);
+    }
     setFormError(null);
     setDialogMode("run");
   }
@@ -95,6 +106,7 @@ export default function Pipelines() {
     setActivePipeline(null);
     setForm(EMPTY_FORM);
     setParamsInput("{}");
+    setSchemaParams({});
     setFormError(null);
   }
 
@@ -124,6 +136,7 @@ export default function Pipelines() {
         description: form.description,
         system_prompt: form.system_prompt,
         default_params: params,
+        param_schema: form.param_schema.length > 0 ? form.param_schema : null,
       },
       {
         onSuccess: closeDialog,
@@ -143,6 +156,7 @@ export default function Pipelines() {
         description: form.description,
         system_prompt: form.system_prompt,
         default_params: params,
+        param_schema: form.param_schema.length > 0 ? form.param_schema : null,
       },
       {
         onSuccess: closeDialog,
@@ -154,17 +168,50 @@ export default function Pipelines() {
   function handleRun() {
     if (!activePipeline) return;
     setFormError(null);
-    const params = parseJsonOrError(paramsInput);
-    if (params === null) return;
-    runPipeline.mutate(
-      { id: activePipeline.id, params },
-      { onSuccess: closeDialog, onError: (err) => setFormError((err as Error).message) },
-    );
+    if (activePipeline.param_schema && activePipeline.param_schema.length > 0) {
+      for (const field of activePipeline.param_schema) {
+        if (field.required && !schemaParams[field.key]?.trim()) {
+          return setFormError(`"${field.label}" is required`);
+        }
+      }
+      runPipeline.mutate(
+        { id: activePipeline.id, params: { ...schemaParams } },
+        { onSuccess: closeDialog, onError: (err) => setFormError((err as Error).message) },
+      );
+    } else {
+      const params = parseJsonOrError(paramsInput);
+      if (params === null) return;
+      runPipeline.mutate(
+        { id: activePipeline.id, params },
+        { onSuccess: closeDialog, onError: (err) => setFormError((err as Error).message) },
+      );
+    }
   }
 
   function handleDelete(p: Pipeline) {
     if (!confirm(`Delete pipeline "${p.name}"?`)) return;
     deletePipeline.mutate(p.id);
+  }
+
+  function addSchemaField() {
+    setForm({
+      ...form,
+      param_schema: [...form.param_schema, { key: "", label: "", type: "string" as const, required: false, placeholder: "" }],
+    });
+  }
+
+  function removeSchemaField(idx: number) {
+    setForm({
+      ...form,
+      param_schema: form.param_schema.filter((_, i) => i !== idx),
+    });
+  }
+
+  function updateSchemaField(idx: number, field: string, value: string | boolean) {
+    const updated = form.param_schema.map((f, i) =>
+      i === idx ? { ...f, [field]: value } : f
+    );
+    setForm({ ...form, param_schema: updated });
   }
 
   const isSaving = createPipeline.isPending || updatePipeline.isPending;
@@ -272,16 +319,73 @@ export default function Pipelines() {
               />
             </div>
             <div>
-              <Label htmlFor="pipe-params">default params (json)</Label>
+              <Label>parameters</Label>
+              <div className="mt-1.5 space-y-2">
+                {form.param_schema.map((field, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2 bg-[hsl(var(--bg))] border border-[hsl(var(--border))] rounded-[var(--radius-sm)] space-y-1.5"
+                  >
+                    <div className="flex gap-1.5">
+                      <Input
+                        value={field.key}
+                        onChange={(e) => updateSchemaField(idx, "key", e.target.value)}
+                        placeholder="key"
+                        className="flex-1"
+                      />
+                      <Input
+                        value={field.label}
+                        onChange={(e) => updateSchemaField(idx, "label", e.target.value)}
+                        placeholder="label"
+                        className="flex-1"
+                      />
+                    </div>
+                    <div className="flex gap-1.5 items-center">
+                      <Input
+                        value={field.placeholder ?? ""}
+                        onChange={(e) => updateSchemaField(idx, "placeholder", e.target.value)}
+                        placeholder="placeholder text"
+                        className="flex-1"
+                      />
+                      <label className="flex items-center gap-1 text-[11px] text-[hsl(var(--muted))] whitespace-nowrap cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={field.required}
+                          onChange={(e) => updateSchemaField(idx, "required", e.target.checked)}
+                          className="accent-[hsl(var(--accent))]"
+                        />
+                        required
+                      </label>
+                      <button
+                        onClick={() => removeSchemaField(idx)}
+                        className="inline-flex items-center justify-center w-6 h-6 rounded-[var(--radius-sm)] text-[hsl(var(--subtle))] hover:text-[hsl(var(--danger))] hover:bg-[hsl(var(--danger)/0.08)] transition-colors"
+                        aria-label="Remove parameter"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <Button variant="ghost" size="sm" iconLeft={<Plus size={11} />} onClick={addSchemaField}>
+                  add parameter
+                </Button>
+              </div>
+            </div>
+
+            <details className="group">
+              <summary className="flex items-center gap-1.5 cursor-pointer list-none">
+                <ChevronRight size={11} className="text-[hsl(var(--subtle))] transition-transform group-open:rotate-90" />
+                <Label className="cursor-pointer">default values (json)</Label>
+              </summary>
               <Textarea
                 id="pipe-params"
                 value={form.default_params}
                 onChange={(e) => setForm({ ...form, default_params: e.target.value })}
-                rows={8}
+                rows={4}
                 className="mt-1.5 font-[var(--font-mono)]"
                 spellCheck={false}
               />
-            </div>
+            </details>
 
             {tools && tools.length > 0 && (
               <div>
@@ -365,17 +469,37 @@ export default function Pipelines() {
             </pre>
           </details>
         )}
-        <div>
-          <Label htmlFor="run-params">params (json)</Label>
-          <Textarea
-            id="run-params"
-            value={paramsInput}
-            onChange={(e) => setParamsInput(e.target.value)}
-            rows={6}
-            className="mt-1.5 font-[var(--font-mono)]"
-            spellCheck={false}
-          />
-        </div>
+        {activePipeline?.param_schema && activePipeline.param_schema.length > 0 ? (
+          <div className="space-y-3">
+            {activePipeline.param_schema.map((field) => (
+              <div key={field.key}>
+                <Label htmlFor={`run-${field.key}`}>
+                  {field.label}
+                  {field.required && <span className="text-[hsl(var(--danger))] ml-0.5">*</span>}
+                </Label>
+                <Input
+                  id={`run-${field.key}`}
+                  value={schemaParams[field.key] ?? ""}
+                  onChange={(e) => setSchemaParams({ ...schemaParams, [field.key]: e.target.value })}
+                  placeholder={field.placeholder}
+                  className="mt-1.5"
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div>
+            <Label htmlFor="run-params">params (json)</Label>
+            <Textarea
+              id="run-params"
+              value={paramsInput}
+              onChange={(e) => setParamsInput(e.target.value)}
+              rows={6}
+              className="mt-1.5 font-[var(--font-mono)]"
+              spellCheck={false}
+            />
+          </div>
+        )}
         {formError && (
           <div className="mt-3 px-3 py-2 bg-[hsl(var(--danger-soft))] border border-[hsl(var(--danger)/0.35)] rounded-[var(--radius-sm)] text-[11.5px] text-[hsl(var(--danger))]">
             {formError}
@@ -429,8 +553,8 @@ function PipelineCard({
     () => extractToolRefs(pipeline.system_prompt),
     [pipeline.system_prompt],
   );
-  const canEdit = pipeline.source !== "legacy";
-  const canDelete = !pipeline.is_builtin && pipeline.source === "db";
+  const canEdit = true;
+  const canDelete = !pipeline.is_builtin;
 
   return (
     <Panel
@@ -440,11 +564,6 @@ function PipelineCard({
           {pipeline.is_builtin && (
             <Badge variant="accent" upper>
               built-in
-            </Badge>
-          )}
-          {pipeline.source === "legacy" && (
-            <Badge variant="outline" upper>
-              legacy
             </Badge>
           )}
         </>

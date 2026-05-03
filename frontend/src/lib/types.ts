@@ -36,14 +36,23 @@ export interface Plugin {
   capabilities: string[];
 }
 
+export interface ParamFieldDef {
+  key: string;
+  label: string;
+  type: "string";
+  required: boolean;
+  placeholder?: string;
+}
+
 export interface Pipeline {
   id: string;
   name: string;
   description: string;
   system_prompt: string;
   default_params: Record<string, unknown>;
+  param_schema: ParamFieldDef[] | null;
   is_builtin: boolean;
-  source: "db" | "legacy";
+  source: "db";
   created_at: string | null;
   updated_at: string | null;
 }
@@ -53,6 +62,7 @@ export interface PipelineCreateInput {
   description?: string;
   system_prompt: string;
   default_params?: Record<string, unknown>;
+  param_schema?: ParamFieldDef[] | null;
 }
 
 export interface PipelineUpdateInput {
@@ -60,6 +70,7 @@ export interface PipelineUpdateInput {
   description?: string;
   system_prompt?: string;
   default_params?: Record<string, unknown>;
+  param_schema?: ParamFieldDef[] | null;
 }
 
 export interface Tool {
