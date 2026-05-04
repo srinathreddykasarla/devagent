@@ -4,10 +4,9 @@ Local-first AI developer platform with Jira/GitHub/Teams/Outlook integrations. P
 
 ## Architecture
 - Backend: Python 3.12+, FastAPI, Celery, SQLAlchemy 2.0 (async), Anthropic SDK (tool_use)
-- Frontend: React 19, TypeScript, Vite, Tailwind v4, TanStack Query, lucide-react
-- Data: SQLite (dev) / PostgreSQL (prod), Redis
-- Orchestration: Anthropic tool_use agent loop (replaces LangGraph for new pipelines)
-- Legacy: LangGraph pipelines kept as fallback (jira_to_pr, jira_summary)
+- Frontend: React 19, TypeScript, Vite 8, Tailwind v4, TanStack Query, lucide-react
+- Data: SQLite (dev) / PostgreSQL 16 (prod), Redis 7
+- Orchestration: Anthropic tool_use agent loop
 - All config from .env via Pydantic Settings — never hardcode secrets
 
 ## Key Commands
@@ -40,18 +39,16 @@ Local-first AI developer platform with Jira/GitHub/Teams/Outlook integrations. P
   - `base.py` — BasePlugin ABC with TOOL_SCHEMAS class attribute
   - Each plugin: `plugin.py` (TOOL_SCHEMAS + execute dispatch), `client.py` (async HTTP client)
   - Jira client: `adf_to_text()` converts Atlassian Document Format to plain text
-- `backend/devagent/pipelines/` — legacy LangGraph pipelines (kept as fallback)
-  - `jira_to_pr.py`, `jira_summary.py` — hardcoded state machines
-  - `helpers.py` — shared utils (extract_repo_url, make_branch_name, inject_claude_md)
 - `backend/devagent/agents/claude_code.py` — Claude Code CLI subprocess wrapper
-- `backend/devagent/core/runner.py` — run_pipeline() (legacy) + run_orchestrated_pipeline() (new)
+- `backend/devagent/core/runner.py` — run_orchestrated_pipeline() (merges params, runs orchestrator, persists result)
 - `backend/devagent/core/event_bus.py` — in-memory pub/sub for real-time log streaming
+- `backend/devagent/database.py` — async engine init, auto-migration for schema changes
 - `backend/devagent/models/` — SQLAlchemy models
-  - `pipeline.py` — PipelineDefinition (name, system_prompt, default_params, is_builtin)
+  - `pipeline.py` — PipelineDefinition (name, system_prompt, default_params, param_schema, is_builtin)
   - `run.py` — TaskRun (status, logs, result, error)
   - `task.py` — TaskDefinition (trigger_type, params, enabled)
 - `backend/devagent/api/routes/` — FastAPI endpoints
-  - `pipelines.py` — CRUD + run (DB orchestrator path or legacy LangGraph fallback)
+  - `pipelines.py` — CRUD + run (validates required params from param_schema, dispatches to orchestrator)
   - `tools.py` — GET /api/tools/ (lists all available tools for the orchestrator)
   - `runs.py`, `tasks.py`, `plugins.py`, `ws.py`
 
@@ -64,7 +61,7 @@ Local-first AI developer platform with Jira/GitHub/Teams/Outlook integrations. P
 - `frontend/src/hooks/useTheme.ts` — dark/light toggle with localStorage persistence
 - `frontend/src/hooks/useWebSocket.ts` — live log streaming for RunDetail
 - `frontend/src/lib/api.ts` — fetch wrapper for all API endpoints
-- `frontend/src/lib/types.ts` — TypeScript types (Pipeline, Run, Task, Tool, etc.)
+- `frontend/src/lib/types.ts` — TypeScript types (Pipeline, ParamFieldDef, Run, Task, Tool, etc.)
 - `frontend/src/lib/format.ts` — formatDuration, formatRelativeTime, shortId, extractToolRefs
 
 ## API Endpoints
@@ -73,7 +70,7 @@ Local-first AI developer platform with Jira/GitHub/Teams/Outlook integrations. P
 - `GET /api/tools/` — available orchestrator tools (derived from plugins)
 - `GET/POST /api/pipelines/` — list / create pipeline
 - `GET/PUT/DELETE /api/pipelines/{id}` — read / update / delete pipeline
-- `POST /api/pipelines/{id}/run` — execute pipeline (orchestrator or legacy)
+- `POST /api/pipelines/{id}/run` — execute pipeline (validates required params, runs orchestrator)
 - `GET/POST /api/tasks/` — list / create task definitions
 - `GET/PUT/DELETE /api/tasks/{id}` — read / update / delete task
 - `POST /api/tasks/{id}/trigger` — trigger a task
@@ -82,20 +79,23 @@ Local-first AI developer platform with Jira/GitHub/Teams/Outlook integrations. P
 - `WS /ws/logs/{runId}` — live log streaming
 
 ## Pipeline System
-Pipelines are stored in the DB as PipelineDefinition rows with a system_prompt field. When run:
-1. The orchestrator loads the prompt and available tools (from ToolRegistry)
-2. Calls Anthropic API with tool_use, letting the LLM decide which tools to invoke
-3. Tools are named `{plugin}__{action}` (e.g. jira__read_ticket, github__clone_repo, claude_code__execute)
-4. Each tool call is dispatched to the corresponding plugin's execute() method
-5. Results are persisted as TaskRun records with status, logs, and result
+Pipelines are stored in the DB as PipelineDefinition rows with a system_prompt and optional param_schema. When run:
+1. Required parameters are validated against param_schema (if defined)
+2. The orchestrator loads the prompt and available tools (from ToolRegistry)
+3. Merges default_params with runtime params
+4. Calls Anthropic API with tool_use, letting the LLM decide which tools to invoke
+5. Tools are named `{plugin}__{action}` (e.g. jira__read_ticket, github__clone_repo, claude_code__execute)
+6. Each tool call is dispatched to the corresponding plugin's execute() method
+7. Results are persisted as TaskRun records with status, logs, and result
 
-Built-in pipelines seeded on startup: jira_to_pr_agent, jira_summary_agent.
-Legacy LangGraph pipelines (jira_to_pr, jira_summary) kept as fallback.
+Built-in pipelines seeded on startup:
+- `jira_to_pr_agent` — params: jira_id (required), repo_url (optional)
+- `jira_summary_agent` — params: project_key (required), status_filter (optional)
 
 ## Docker Services
-- `api` — FastAPI backend (Dockerfile.api)
+- `api` — FastAPI backend (Dockerfile.api, port 8000)
 - `worker` — Celery worker (Dockerfile.worker)
 - `scheduler` — Celery beat (Dockerfile.worker)
-- `ui` — React frontend via nginx (Dockerfile.ui)
-- `redis` — Redis 7
-- `db` — PostgreSQL 16
+- `ui` — React frontend via nginx (Dockerfile.ui, port 3000)
+- `redis` — Redis 7 (port 6379)
+- `db` — PostgreSQL 16 (port 5432)
